@@ -35,9 +35,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Chinese cities dictionary
+# Chinese cities dictionary - Chinese only
 CHINESE_CITIES = {
-    "Guangzhou": "广东",
+    "Guangzhou": "广州",
     "Shenzhen": "深圳",
     "Dongguan": "东莞",
     "Foshan": "佛山",
@@ -205,7 +205,7 @@ if 'pdf_language' not in st.session_state:
 if 'selected_city' not in st.session_state:
     st.session_state.selected_city = "Shanghai"
 
-# SEPARATE TEXT DICTIONARIES
+# SEPARATE TEXT DICTIONARIES - PURE ENGLISH AND PURE CHINESE
 ENGLISH_TEXTS = {
     "title": "Die Cut Test Report System",
     "basic_info": "Basic Information",
@@ -278,12 +278,23 @@ ENGLISH_TEXTS = {
     "top_piece": "Top piece attachment strength",
     "straps_strength": "Strength of Straps & buckle",
     "heel_attachment": "Heel Attachment",
-    "insole_perment": "Insole Perment set at 400N",
+    "insole_perment": "Insole Permanent set at 400N",
     "toe_post": "Toe Post Attachment",
     "main_issues": "Main issues & Solution",
     "signature_date": "Date",
     "updated_2022": "Updated 2022.8.30",
     "disclaimer_text": "Note: This review information does not release the factory from any responsibilities in the event of claims being received from our customer.",
+    "company_name": "Grand Step Quality Control Department",
+    "report_generated": "Report Generated",
+    "page": "Page",
+    "units": {
+        "sole_bonding": "Sidewall shoes ≥ 2.0 N/mm\nOthers ≥ 3.0 N/mm",
+        "heel_attachment": "≥ 500N",
+        "top_piece": "≥ 140N",
+        "insole_perment": "Deformation ≤ 15%\nat 400N",
+        "straps_strength": "Women ≥ 200N\nMen ≥ 250N\nElastic ≥ 150N\nChildren ≥ 250N",
+        "toe_post": "EVA & rubber ≥ 150N\nOther ≥ 200N"
+    }
 }
 
 MANDARIN_TEXTS = {
@@ -364,6 +375,17 @@ MANDARIN_TEXTS = {
     "signature_date": "日期",
     "updated_2022": "更新 2022.8.30",
     "disclaimer_text": "此报表不免除我客人收到货后索赔而引起的货物供应商(工厂)的任何责任.",
+    "company_name": "志途质量检测部",
+    "report_generated": "报告生成时间",
+    "page": "第",
+    "units": {
+        "sole_bonding": "边墙鞋不能小于\n2.0 N/mm\n其他不小于\n3.0 N/mm",
+        "heel_attachment": "不能小于500N",
+        "top_piece": "不小于140N",
+        "insole_perment": "400N时变形量\n最大不能超过15%",
+        "straps_strength": "女鞋不小于200N\n男鞋不小于250N\n有松紧带的部位不小于150N\n童鞋不小于250N",
+        "toe_post": "EVA and rubber material Min 150N,\n其他材料 Min 200N"
+    }
 }
 
 def get_text(key, fallback=None):
@@ -380,6 +402,13 @@ def get_pdf_text(key, pdf_language):
         return MANDARIN_TEXTS.get(key, key)
     else:
         return ENGLISH_TEXTS.get(key, key)
+
+def get_pdf_unit(key, pdf_language):
+    """Get unit text for PDF based on selected language"""
+    if pdf_language == "zh":
+        return MANDARIN_TEXTS["units"].get(key, "")
+    else:
+        return ENGLISH_TEXTS["units"].get(key, "")
 
 # ENHANCED PDF Generation with Headers and Footers
 class DieCutPDF(SimpleDocTemplate):
@@ -406,33 +435,37 @@ class DieCutPDF(SimpleDocTemplate):
         font_size = 9
         self.canv.setFont('Helvetica', font_size)
         
-        # Location info
+        # Location info - PURE LANGUAGE BASED ON PDF LANGUAGE
         china_tz = pytz.timezone('Asia/Shanghai')
         current_time = datetime.now(china_tz)
         
-        if self.pdf_language == "zh" and self.chinese_city:
-            location_info = f"📍 地点: {self.selected_city} ({self.chinese_city})"
-            date_info = f"📅 日期: {current_time.strftime('%Y-%m-%d')}"
+        if self.pdf_language == "zh":
+            # Pure Chinese for Chinese PDF
+            location_text = f"📍 地点: {self.chinese_city}"
+            date_text = f"📅 日期: {current_time.strftime('%Y年%m月%d日')}"
+            company_name = MANDARIN_TEXTS["company_name"]
+            page_text = f"第 {self.page} 页"
         else:
-            location_info = f"📍 Location: {self.selected_city}"
-            date_info = f"📅 Date: {current_time.strftime('%Y-%m-%d')}"
+            # Pure English for English PDF
+            location_text = f"📍 Location: {self.selected_city}"
+            date_text = f"📅 Date: {current_time.strftime('%Y-%m-%d')}"
+            company_name = ENGLISH_TEXTS["company_name"]
+            page_text = f"Page {self.page}"
         
         # Left aligned info
         self.canv.setFillColor(colors.HexColor('#666666'))
-        self.canv.drawString(0.5*inch, 0.15*inch, location_info)
-        self.canv.drawString(2.5*inch, 0.15*inch, date_info)
+        self.canv.drawString(0.5*inch, 0.15*inch, location_text)
+        self.canv.drawString(2.5*inch, 0.15*inch, date_text)
         
         # Center company name
-        company_name = "Grand Step QC" if self.pdf_language == "en" else "志途质量检测"
         self.canv.setFillColor(colors.HexColor('#667eea'))
         self.canv.setFont('Helvetica-Bold', 10)
         self.canv.drawCentredString(self.pagesize[0]/2, 0.15*inch, company_name)
         
         # Right aligned page number
-        page_num = f"Page {self.page}" if self.pdf_language == "en" else f"第 {self.page} 页"
         self.canv.setFillColor(colors.HexColor('#666666'))
         self.canv.setFont('Helvetica', 9)
-        self.canv.drawRightString(self.pagesize[0] - 0.5*inch, 0.15*inch, page_num)
+        self.canv.drawRightString(self.pagesize[0] - 0.5*inch, 0.15*inch, page_text)
         
         self.canv.restoreState()
 
@@ -641,14 +674,14 @@ def generate_pdf():
     # ========== REPORT HEADER ==========
     
     # Company header
-    company_text = "GRAND STEP QUALITY CONTROL DEPARTMENT" if pdf_lang == "en" else "志途质量检测部"
+    company_text = get_pdf_text("company_name", pdf_lang)
     elements.append(create_paragraph(company_text, company_header_style))
     
     # Main Title with decorative elements
     title_text = get_pdf_text("title", pdf_lang)
     elements.append(create_paragraph(title_text, title_style, bold=True))
     
-    # Subtitle with test dates
+    # Subtitle with test dates - PURE LANGUAGE
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
     
@@ -656,9 +689,15 @@ def generate_pdf():
     batch_test_date = st.session_state.get('batch_test_date', current_time)
     
     if pdf_lang == "zh":
-        subtitle_text = f"报告生成时间: {current_time.strftime('%Y年%m月%d日 %H:%M')} | 测试地点: {selected_city} ({chinese_city})"
+        # Pure Chinese subtitle
+        subtitle_text = f"{get_pdf_text('report_generated', pdf_lang)}: {current_time.strftime('%Y年%m月%d日 %H:%M')}"
+        if chinese_city:
+            subtitle_text += f" | {get_pdf_text('test_location', pdf_lang)}: {chinese_city}"
     else:
-        subtitle_text = f"Report Generated: {current_time.strftime('%Y-%m-%d %H:%M')} | Test Location: {selected_city}"
+        # Pure English subtitle
+        subtitle_text = f"{get_pdf_text('report_generated', pdf_lang)}: {current_time.strftime('%Y-%m-%d %H:%M')}"
+        if selected_city:
+            subtitle_text += f" | {get_pdf_text('test_location', pdf_lang)}: {selected_city}"
     
     elements.append(create_paragraph(subtitle_text, subtitle_style))
     elements.append(Spacer(1, 10))
@@ -677,7 +716,6 @@ def generate_pdf():
     
     die_cut_text = get_pdf_text("die_cut_test", pdf_lang)
     batches_text = get_pdf_text("batch_test", pdf_lang)
-    date_text = get_pdf_text("signature_date", pdf_lang)
     
     # Create a more attractive test date header
     test_header_data = [
@@ -826,7 +864,7 @@ def generate_pdf():
     
     check_data = [check_header]
     
-    # Define check items
+    # Define check items - PURE LANGUAGE
     check_items = [
         (get_pdf_text("last_no_correct", pdf_lang), "last_no_yes", "last_no_no", "last_no_comments"),
         (get_pdf_text("color_matches", pdf_lang), "color_yes", "color_no", "color_comments"),
@@ -915,20 +953,20 @@ def generate_pdf():
     
     test_data = [test_header]
     
-    # Test items
+    # Test items - PURE LANGUAGE UNITS
     test_items = [
         (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
-         "Sidewall shoes ≥ 2.0 N/mm\nOthers ≥ 3.0 N/mm" if pdf_lang == "en" else "边墙鞋不能小于\n2.0 N/mm\n其他不小于\n3.0 N/mm"),
+         get_pdf_unit("sole_bonding", pdf_lang)),
         (get_pdf_text("heel_attachment", pdf_lang), "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail",
-         "≥ 500N" if pdf_lang == "en" else "不能小于500N"),
+         get_pdf_unit("heel_attachment", pdf_lang)),
         (get_pdf_text("top_piece", pdf_lang), "top_piece_result", "top_piece_pass", "top_piece_fail",
-         "≥ 140N" if pdf_lang == "en" else "不小于140N"),
+         get_pdf_unit("top_piece", pdf_lang)),
         (get_pdf_text("insole_perment", pdf_lang), "insole_perment_result", "insole_perment_pass", "insole_perment_fail",
-         "Deformation ≤ 15%\nat 400N" if pdf_lang == "en" else "400N时变形量\n最大不能超过15%"),
+         get_pdf_unit("insole_perment", pdf_lang)),
         (get_pdf_text("straps_strength", pdf_lang), "straps_strength_result", "straps_strength_pass", "straps_strength_fail",
-         "Women ≥ 200N\nMen ≥ 250N\nElastic ≥ 150N\nChildren ≥ 250N" if pdf_lang == "en" else "女鞋不小于200N\n男鞋不小于250N\n有松紧带的部位不小于150N\n童鞋不小于250N"),
+         get_pdf_unit("straps_strength", pdf_lang)),
         (get_pdf_text("toe_post", pdf_lang), "toe_post_result", "toe_post_pass", "toe_post_fail",
-         "EVA & rubber ≥ 150N\nOther ≥ 200N" if pdf_lang == "en" else "EVA and rubber material Min 150N,\n其他材料 Min 200N")
+         get_pdf_unit("toe_post", pdf_lang))
     ]
     
     for item, result_key, pass_key, fail_key, standard in test_items:
@@ -937,11 +975,11 @@ def generate_pdf():
         fail_check = st.session_state.get(fail_key, False)
         
         if pass_check:
-            status = create_paragraph("✅ PASS", pass_style)
+            status = create_paragraph("✅ " + ("PASS" if pdf_lang == "en" else "通过"), pass_style)
         elif fail_check:
-            status = create_paragraph("❌ FAIL", fail_style)
+            status = create_paragraph("❌ " + ("FAIL" if pdf_lang == "en" else "失败"), fail_style)
         else:
-            status = create_paragraph("⏳ PENDING", small_style)
+            status = create_paragraph("⏳ " + ("PENDING" if pdf_lang == "en" else "待定"), small_style)
         
         row = [
             create_paragraph(item, table_cell_style),
@@ -981,11 +1019,14 @@ def generate_pdf():
     tech_comments_no = "✅" if st.session_state.get('tech_comments_no', False) else "⬜"
     tech_comments_desc = st.session_state.get('tech_comments_description', '')
     
+    yes_text = get_pdf_text("yes", pdf_lang)
+    no_text = get_pdf_text("no", pdf_lang)
+    
     comments_data = [
         [
-            create_paragraph("✅ " + get_pdf_text("yes", pdf_lang), table_cell_bold_style, bold=True),
+            create_paragraph("✅ " + yes_text, table_cell_bold_style, bold=True),
             create_paragraph(tech_comments_yes, table_cell_center_style),
-            create_paragraph("❌ " + get_pdf_text("no", pdf_lang) + " ➜", table_cell_bold_style, bold=True),
+            create_paragraph("❌ " + no_text + " ➜", table_cell_bold_style, bold=True),
             create_paragraph(tech_comments_no, table_cell_center_style),
             create_paragraph(get_pdf_text("if_not_same", pdf_lang), table_cell_bold_style, bold=True)
         ],
@@ -1020,6 +1061,8 @@ def generate_pdf():
     die_cut_issues = st.session_state.get('die_cut_issues', '')
     batch_test_issues = st.session_state.get('batch_test_issues', '')
     
+    no_issues_text = "No issues reported" if pdf_lang == "en" else "无问题报告"
+    
     issues_data = [
         [
             create_paragraph("🔪 " + get_pdf_text("die_cut_test", pdf_lang), 
@@ -1042,7 +1085,7 @@ def generate_pdf():
                            ), bold=True)
         ],
         [
-            create_paragraph(die_cut_issues if die_cut_issues else "No issues reported", 
+            create_paragraph(die_cut_issues if die_cut_issues else no_issues_text, 
                            ParagraphStyle(
                                'IssuesContent',
                                parent=table_cell_style,
@@ -1052,7 +1095,7 @@ def generate_pdf():
                                borderPadding=8,
                                backColor=colors.HexColor('#f8f9fa')
                            )),
-            create_paragraph(batch_test_issues if batch_test_issues else "No issues reported", 
+            create_paragraph(batch_test_issues if batch_test_issues else no_issues_text, 
                            ParagraphStyle(
                                'IssuesContent',
                                parent=table_cell_style,
@@ -1081,7 +1124,7 @@ def generate_pdf():
     
     signature_date_val = st.session_state.get('signature_date', current_time)
     
-    # Create signature boxes
+    # Create signature boxes - PURE LANGUAGE
     signatures = [
         (get_pdf_text("factory_rep", pdf_lang), "factory_representative"),
         (get_pdf_text("gs_qc", pdf_lang), "gs_qc"),
@@ -1136,7 +1179,7 @@ def generate_pdf():
     
     # ========== FOOTER NOTES ==========
     
-    # Updated date
+    # Updated date - PURE LANGUAGE
     updated_text = get_pdf_text("updated_2022", pdf_lang)
     elements.append(create_paragraph(f"📅 {updated_text}", 
                                    ParagraphStyle(
@@ -1148,7 +1191,7 @@ def generate_pdf():
     
     elements.append(Spacer(1, 10))
     
-    # Disclaimer with better styling
+    # Disclaimer with better styling - PURE LANGUAGE
     disclaimer_text = get_pdf_text("disclaimer_text", pdf_lang)
     elements.append(create_paragraph("⚠️ " + disclaimer_text, disclaimer_style))
     
@@ -1663,7 +1706,8 @@ with col2:
                     with st.expander(f"{ICONS['info']} {get_text('pdf_details')}"):
                         col_info1, col_info2 = st.columns(2)
                         with col_info1:
-                            st.metric(get_text("location"), f"{selected_city} ({CHINESE_CITIES[selected_city]})")
+                            city_display = CHINESE_CITIES[selected_city] if st.session_state.pdf_language == "zh" else selected_city
+                            st.metric(get_text("location"), city_display)
                             st.metric(get_text("report_language"), "Mandarin" if st.session_state.pdf_language == "zh" else "English")
                         with col_info2:
                             china_tz = pytz.timezone('Asia/Shanghai')
