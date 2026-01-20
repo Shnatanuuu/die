@@ -437,33 +437,45 @@ def get_pdf_text(key, pdf_language):
         return ENGLISH_TEXTS.get(key, key)
 
 def safe_int_convert(value, default=0):
-    """Safely convert value to integer, handling None and empty strings"""
+    """Safely convert value to integer, handling ALL edge cases"""
+    # If it's already None, return default
     if value is None:
         return default
     
-    # If it's already an integer or float, convert to int
-    if isinstance(value, (int, float)):
+    # If it's already an integer, return it
+    if isinstance(value, int):
+        return value
+    
+    # If it's a float, convert to int
+    if isinstance(value, float):
         try:
             return int(value)
         except (ValueError, TypeError):
             return default
     
-    # If it's a string, try to convert
+    # If it's a string, try to extract numbers
     if isinstance(value, str):
-        value = value.strip()
-        if value == "":
+        value = str(value).strip()  # Ensure it's a string
+        if value == "" or value.lower() == "none" or value.lower() == "null" or value.lower() == "nan":
             return default
         
-        # Try to extract numbers from the string
+        # Try direct conversion first
         try:
-            # Find all numbers in the string
-            numbers = re.findall(r'\d+\.?\d*', value)
-            if numbers:
-                # Use the first number found
-                return int(float(numbers[0]))
-            return default
+            # Remove any commas from numbers like "1,000"
+            clean_value = value.replace(',', '')
+            return int(float(clean_value))
         except (ValueError, TypeError):
-            return default
+            # Try to find numbers in the string
+            try:
+                # Find all numbers (including decimals and negative)
+                numbers = re.findall(r'[-+]?\d*\.?\d+', value)
+                if numbers:
+                    # Use the first number found
+                    num = float(numbers[0])
+                    return int(num)
+                return default
+            except:
+                return default
     
     # For any other type, try direct conversion
     try:
@@ -472,35 +484,32 @@ def safe_int_convert(value, default=0):
         return default
 
 def safe_float_convert(value, default=0.0):
-    """Safely convert value to float, handling None and empty strings"""
+    """Safely convert value to float"""
     if value is None:
         return default
     
-    # If it's already a float or int
     if isinstance(value, (int, float)):
         try:
             return float(value)
         except (ValueError, TypeError):
             return default
     
-    # If it's a string, try to convert
     if isinstance(value, str):
-        value = value.strip()
+        value = str(value).strip()
         if value == "":
             return default
-        
-        # Try to extract numbers from the string
         try:
-            # Find all numbers (including decimals) in the string
-            numbers = re.findall(r'\d+\.?\d*', value)
-            if numbers:
-                # Use the first number found
-                return float(numbers[0])
-            return default
+            clean_value = value.replace(',', '')
+            return float(clean_value)
         except (ValueError, TypeError):
-            return default
+            try:
+                numbers = re.findall(r'[-+]?\d*\.?\d+', value)
+                if numbers:
+                    return float(numbers[0])
+                return default
+            except:
+                return default
     
-    # For any other type, try direct conversion
     try:
         return float(value)
     except (ValueError, TypeError):
@@ -1230,50 +1239,113 @@ def generate_pdf():
     
     # ========== SIZE & QUANTITY TABLE ==========
     
-# ========== SIMPLE SIZE & QUANTITY TABLE (NO CALCULATIONS) ==========
-
-size_data = st.session_state.size_data
-
-if size_data:
-    size_label = get_pdf_text("size", pdf_lang)
-    die_qty_label = get_pdf_text("die_qty", pdf_lang)
-    batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
+    size_data = st.session_state.size_data
     
-    # Create table data - just show the values without totals
-    qty_data = [[
-        create_paragraph(size_label, table_header_style, bold=True),
-        create_paragraph(die_qty_label, table_header_style, bold=True),
-        create_paragraph(batch_qty_label, table_header_style, bold=True)
-    ]]
-    
-    for item in size_data:
-        # Just display values as-is, no calculations
-        size_val = item.get('size', '')
-        die_qty_val = item.get('die_qty', '')
-        batch_qty_val = item.get('batch_qty', '')
+    if size_data:
+        size_label = get_pdf_text("size", pdf_lang)
+        die_qty_label = get_pdf_text("die_qty", pdf_lang)
+        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
+        total_label = get_pdf_text("total", pdf_lang)
         
-        # Convert to string
-        size_display = str(size_val) if size_val not in [None, ''] else '-'
-        die_qty_display = str(die_qty_val) if die_qty_val not in [None, ''] else '-'
-        batch_qty_display = str(batch_qty_val) if batch_qty_val not in [None, ''] else '-'
+        # Create table data
+        qty_data = [[
+            create_paragraph(size_label, table_header_style, bold=True),
+            create_paragraph(die_qty_label, table_header_style, bold=True),
+            create_paragraph(batch_qty_label, table_header_style, bold=True)
+        ]]
         
+        total_die_qty = 0
+        total_batch_qty = 0
+        
+        for item in size_data:
+            # Safely get values with defaults
+            size_val = item.get('size', '')
+            die_qty_val = item.get('die_qty', '')
+            batch_qty_val = item.get('batch_qty', '')
+            
+            # Convert to string and clean
+            size_display = str(size_val).strip() if size_val is not None else ''
+            die_qty_display = str(die_qty_val).strip() if die_qty_val is not None else ''
+            batch_qty_display = str(batch_qty_val).strip() if batch_qty_val is not None else ''
+            
+            # Use hyphen for empty values
+            size_display = size_display if size_display else '-'
+            die_qty_display = die_qty_display if die_qty_display else '-'
+            batch_qty_display = batch_qty_display if batch_qty_display else '-'
+            
+            # SAFELY convert to integers using our robust function
+            die_qty_int = safe_int_convert(die_qty_val, 0)
+            batch_qty_int = safe_int_convert(batch_qty_val, 0)
+            
+            total_die_qty += die_qty_int
+            total_batch_qty += batch_qty_int
+            
+            qty_data.append([
+                create_paragraph(size_display, table_cell_center_style),
+                create_paragraph(die_qty_display, table_cell_center_style),
+                create_paragraph(batch_qty_display, table_cell_center_style)
+            ])
+        
+        # Add total row
         qty_data.append([
-            create_paragraph(size_display, table_cell_center_style),
-            create_paragraph(die_qty_display, table_cell_center_style),
-            create_paragraph(batch_qty_display, table_cell_center_style)
+            create_paragraph(f"<b>{total_label}</b>", table_cell_bold_style, bold=True),
+            create_paragraph(str(total_die_qty) if total_die_qty > 0 else '-', table_cell_bold_style, bold=True),
+            create_paragraph(str(total_batch_qty) if total_batch_qty > 0 else '-', table_cell_bold_style, bold=True)
         ])
+        
+        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+        qty_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f4ff')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(qty_table)
+    else:
+        # Fallback to simple display if no size data
+        size_label = get_pdf_text("size", pdf_lang)
+        die_qty_label = get_pdf_text("die_qty", pdf_lang)
+        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
+        
+        size_val = get_pdf_display_value('size', pdf_lang)
+        die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
+        batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
+        
+        size_val = str(size_val) if size_val is not None else '-'
+        die_qty_val = str(die_qty_val) if die_qty_val is not None else '-'
+        batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else '-'
+        
+        qty_data = [
+            [
+                create_paragraph(size_label, table_cell_bold_style, bold=True),
+                create_paragraph(die_qty_label, table_cell_bold_style, bold=True),
+                create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
+            ],
+            [
+                create_paragraph(size_val, table_cell_center_style),
+                create_paragraph(die_qty_val, table_cell_center_style),
+                create_paragraph(batch_qty_val, table_cell_center_style)
+            ]
+        ]
+        
+        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+        qty_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(qty_table)
     
-    qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
-    qty_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(qty_table)
+    elements.append(Spacer(1, 15))
     
     # ========== MAIN CHECK POINTS ==========
     
@@ -1692,7 +1764,7 @@ if size_data:
         spaceBefore=8
     )))
     
-    # Build PDF
+    # Build PDF with error handling
     try:
         doc.build(elements)
     except Exception as e:
