@@ -462,19 +462,20 @@ def insert_numbers_back(translated_text, original_numbers):
 def translate_text_with_openai(text, target_language):
     """Translate text using OpenAI with number preservation"""
     if not text or text.strip() == "":
-        return text
+        return ""
     
     # Check cache first
     cache_key = (text, target_language)
     if cache_key in st.session_state.translation_cache:
-        return st.session_state.translation_cache[cache_key]
+        cached_result = st.session_state.translation_cache[cache_key]
+        return str(cached_result) if cached_result is not None else ""
     
     # Extract and preserve numbers
     original_numbers = extract_and_preserve_numbers(text)
     
     # If no OpenAI client, return original text
     if not openai_client:
-        return text
+        return str(text) if text is not None else ""
     
     # Map language codes to OpenAI format
     if target_language == "zh":
@@ -509,12 +510,12 @@ def translate_text_with_openai(text, target_language):
         
         # Cache the result
         st.session_state.translation_cache[cache_key] = translated_with_numbers
-        return translated_with_numbers
+        return str(translated_with_numbers) if translated_with_numbers is not None else ""
         
     except Exception as e:
         st.error(f"Translation error: {str(e)}")
         # Return original text if translation fails
-        return text
+        return str(text) if text is not None else ""
 
 def get_display_value(field_key):
     """Get value for display based on current UI language"""
@@ -525,10 +526,13 @@ def get_display_value(field_key):
     
     # If UI is in English, show English value
     if st.session_state.ui_language == "en":
-        return english_value
+        result = str(english_value) if english_value is not None else ''
     else:
         # Translate to Mandarin for display
-        return translate_text_with_openai(english_value, "zh")
+        result = translate_text_with_openai(english_value, "zh")
+    
+    # Ensure we always return a string, not None
+    return str(result) if result is not None else ''
 
 def update_english_value(field_key, displayed_value):
     """Update the English value based on user input"""
@@ -546,6 +550,16 @@ def update_english_value(field_key, displayed_value):
         
         # Simple check: if text contains Chinese characters, translate to English
         # If it's already English, store directly
+        def contains_chinese(text):
+            """Check if text contains Chinese characters"""
+            if not text:
+                return False
+            # Check for Chinese Unicode characters
+            for char in text:
+                if '\u4e00' <= char <= '\u9fff':
+                    return True
+            return False
+        
         if contains_chinese(displayed_value):
             # Translate to English for storage
             english_text = translate_text_with_openai(displayed_value.strip(), "en")
@@ -553,16 +567,6 @@ def update_english_value(field_key, displayed_value):
         else:
             # Already in English, store directly
             st.session_state.english_values[field_key] = displayed_value.strip()
-
-def contains_chinese(text):
-    """Check if text contains Chinese characters"""
-    if not text:
-        return False
-    # Check for Chinese Unicode characters
-    for char in text:
-        if '\u4e00' <= char <= '\u9fff':
-            return True
-    return False
 
 def get_pdf_display_value(field_key, pdf_language):
     """Get value for PDF generation based on PDF language"""
@@ -573,10 +577,13 @@ def get_pdf_display_value(field_key, pdf_language):
     
     # If PDF is in English, show English value
     if pdf_language == "en":
-        return english_value
+        result = str(english_value) if english_value is not None else ''
     else:
         # Translate to Mandarin for PDF
-        return translate_text_with_openai(english_value, "zh")
+        result = translate_text_with_openai(english_value, "zh")
+    
+    # Ensure we always return a string, not None
+    return str(result) if result is not None else ''
 
 # ENHANCED PDF Generation with proper Chinese support
 class DieCutPDF(SimpleDocTemplate):
@@ -592,10 +599,7 @@ class DieCutPDF(SimpleDocTemplate):
         
         # Set font based on language
         if self.pdf_language == "zh":
-            # Register Chinese font if available
             try:
-                # Try to load a Chinese font (you need to have a Chinese TTF file)
-                # For now, we'll use Helvetica for English and fallback for Chinese
                 canvas.setFont('Helvetica-Bold', 14)
             except:
                 canvas.setFont('Helvetica-Bold', 14)
@@ -899,6 +903,12 @@ def generate_pdf():
     # Helper function for creating paragraphs
     def create_paragraph(text, style, bold=False, color=None):
         """Create paragraph with appropriate styling"""
+        # Handle None or empty text
+        if text is None:
+            text = ""
+        elif not isinstance(text, str):
+            text = str(text)
+        
         if bold and not hasattr(style, 'bold'):
             style = ParagraphStyle(
                 f"BoldStyle_{hash(text)}",
@@ -913,7 +923,7 @@ def generate_pdf():
                 textColor=color
             )
             
-        return Paragraph(str(text), style)  # Ensure text is string
+        return Paragraph(text, style)
     
     # ========== REPORT HEADER ==========
     
@@ -999,7 +1009,7 @@ def generate_pdf():
     basic_info_title = create_paragraph(get_pdf_text("basic_info", pdf_lang), section_header_style, bold=True)
     elements.append(basic_info_title)
     
-    # Get values using PDF display function
+    # Get values using PDF display function - this ensures proper translation
     contract_no_val = get_pdf_display_value('contract_no', pdf_lang)
     brand_val = get_pdf_display_value('brand', pdf_lang)
     agent_factory_val = get_pdf_display_value('agent_factory', pdf_lang)
@@ -1008,6 +1018,15 @@ def generate_pdf():
     sales_val = get_pdf_display_value('sales', pdf_lang)
     factory_style_val = get_pdf_display_value('factory_style', pdf_lang)
     ship_date_val = st.session_state.get('ship_date', current_time)
+    
+    # Ensure all values are strings, not None
+    contract_no_val = str(contract_no_val) if contract_no_val is not None else ''
+    brand_val = str(brand_val) if brand_val is not None else ''
+    agent_factory_val = str(agent_factory_val) if agent_factory_val is not None else ''
+    style_name_val = str(style_name_val) if style_name_val is not None else ''
+    qty_val = str(qty_val) if qty_val is not None else ''
+    sales_val = str(sales_val) if sales_val is not None else ''
+    factory_style_val = str(factory_style_val) if factory_style_val is not None else ''
     
     # Create a cleaner table layout with pure language
     basic_data = []
@@ -1082,6 +1101,11 @@ def generate_pdf():
     die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
     batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
     
+    # Ensure all values are strings, not None
+    size_val = str(size_val) if size_val is not None else ''
+    die_qty_val = str(die_qty_val) if die_qty_val is not None else ''
+    batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else ''
+    
     size_label = get_pdf_text("size", pdf_lang)
     die_qty_label = get_pdf_text("die_qty", pdf_lang)
     batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
@@ -1141,6 +1165,7 @@ def generate_pdf():
         yes_check = "✓" if st.session_state.get(yes_key, False) else ""
         no_check = "✓" if st.session_state.get(no_key, False) else ""
         comment = get_pdf_display_value(comment_key, pdf_lang)
+        comment = str(comment) if comment is not None else ''
         
         row = [
             create_paragraph(item, table_cell_style),
@@ -1179,6 +1204,7 @@ def generate_pdf():
     # Tech specs comparison with better styling
     same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
     tech_specs_comments_val = get_pdf_display_value('tech_specs_comments', pdf_lang)
+    tech_specs_comments_val = str(tech_specs_comments_val) if tech_specs_comments_val is not None else ''
     
     same_label = get_pdf_text("same", pdf_lang)
     if_not_label = get_pdf_text("if_not_same", pdf_lang)
@@ -1222,6 +1248,7 @@ def generate_pdf():
     tech_comments_yes = "✓" if st.session_state.get('tech_comments_yes', False) else ""
     tech_comments_no = "✓" if st.session_state.get('tech_comments_no', False) else ""
     tech_comments_desc = get_pdf_display_value('tech_comments_description', pdf_lang)
+    tech_comments_desc = str(tech_comments_desc) if tech_comments_desc is not None else ''
     
     yes_label = get_pdf_text("yes", pdf_lang)
     no_label = get_pdf_text("no", pdf_lang)
@@ -1305,6 +1332,7 @@ def generate_pdf():
     
     for item, result_key, pass_key, fail_key, standard in test_items:
         result = get_pdf_display_value(result_key, pdf_lang)
+        result = str(result) if result is not None else ''
         
         pass_check = st.session_state.get(pass_key, False)
         fail_check = st.session_state.get(fail_key, False)
@@ -1353,6 +1381,9 @@ def generate_pdf():
     # Two-column layout for issues
     die_cut_issues = get_pdf_display_value('die_cut_issues', pdf_lang)
     batch_test_issues = get_pdf_display_value('batch_test_issues', pdf_lang)
+    
+    die_cut_issues = str(die_cut_issues) if die_cut_issues is not None else ''
+    batch_test_issues = str(batch_test_issues) if batch_test_issues is not None else ''
     
     if pdf_lang == "zh":
         no_issues_text = "无问题报告"
@@ -1457,6 +1488,7 @@ def generate_pdf():
     # Signature rows
     for label, key, date_label in signatures:
         value = get_pdf_display_value(key, pdf_lang)
+        value = str(value) if value is not None else ''
         
         sig_row = [
             create_paragraph(label, table_cell_bold_style, bold=True),
