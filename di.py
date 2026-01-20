@@ -35,9 +35,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Chinese cities dictionary - Chinese only
+# Chinese cities dictionary
 CHINESE_CITIES = {
-    "Guangzhou": "广州",
+    "Guangzhou": "广东",
     "Shenzhen": "深圳",
     "Dongguan": "东莞",
     "Foshan": "佛山",
@@ -205,7 +205,7 @@ if 'pdf_language' not in st.session_state:
 if 'selected_city' not in st.session_state:
     st.session_state.selected_city = "Shanghai"
 
-# SEPARATE TEXT DICTIONARIES - PURE ENGLISH AND PURE CHINESE
+# SEPARATE TEXT DICTIONARIES
 ENGLISH_TEXTS = {
     "title": "Die Cut Test Report System",
     "basic_info": "Basic Information",
@@ -278,24 +278,14 @@ ENGLISH_TEXTS = {
     "top_piece": "Top piece attachment strength",
     "straps_strength": "Strength of Straps & buckle",
     "heel_attachment": "Heel Attachment",
-    "insole_perment": "Insole Permanent set at 400N",
+    "insole_perment": "Insole Perment set at 400N",
     "toe_post": "Toe Post Attachment",
     "main_issues": "Main issues & Solution",
     "signature_date": "Date",
     "updated_2022": "Updated 2022.8.30",
     "disclaimer_text": "Note: This review information does not release the factory from any responsibilities in the event of claims being received from our customer.",
-    "company_name": "Grand Step Quality Control Department",
-    "report_generated": "Report Generated",
-    "page": "Page",
-    "units": {
-        "sole_bonding": "Sidewall shoes ≥ 2.0 N/mm\nOthers ≥ 3.0 N/mm",
-        "heel_attachment": "≥ 500N",
-        "top_piece": "≥ 140N",
-        "insole_perment": "Deformation ≤ 15%\nat 400N",
-        "straps_strength": "Women ≥ 200N\nMen ≥ 250N\nElastic ≥ 150N\nChildren ≥ 250N",
-        "toe_post": "EVA & rubber ≥ 150N\nOther ≥ 200N"
-    }
 }
+
 
 MANDARIN_TEXTS = {
     "title": "斩刀试做报告系统",
@@ -375,17 +365,6 @@ MANDARIN_TEXTS = {
     "signature_date": "日期",
     "updated_2022": "更新 2022.8.30",
     "disclaimer_text": "此报表不免除我客人收到货后索赔而引起的货物供应商(工厂)的任何责任.",
-    "company_name": "志途质量检测部",
-    "report_generated": "报告生成时间",
-    "page": "第",
-    "units": {
-        "sole_bonding": "边墙鞋不能小于\n2.0 N/mm\n其他不小于\n3.0 N/mm",
-        "heel_attachment": "不能小于500N",
-        "top_piece": "不小于140N",
-        "insole_perment": "400N时变形量\n最大不能超过15%",
-        "straps_strength": "女鞋不小于200N\n男鞋不小于250N\n有松紧带的部位不小于150N\n童鞋不小于250N",
-        "toe_post": "EVA and rubber material Min 150N,\n其他材料 Min 200N"
-    }
 }
 
 def get_text(key, fallback=None):
@@ -403,14 +382,9 @@ def get_pdf_text(key, pdf_language):
     else:
         return ENGLISH_TEXTS.get(key, key)
 
-def get_pdf_unit(key, pdf_language):
-    """Get unit text for PDF based on selected language"""
-    if pdf_language == "zh":
-        return MANDARIN_TEXTS["units"].get(key, "")
-    else:
-        return ENGLISH_TEXTS["units"].get(key, "")
+# ENHANCED PDF Generation with pure language support
+# Replace the DieCutPDF class with this corrected version:
 
-# ENHANCED PDF Generation with Headers and Footers
 class DieCutPDF(SimpleDocTemplate):
     def __init__(self, *args, **kwargs):
         self.pdf_language = kwargs.pop('pdf_language', 'en')
@@ -418,57 +392,91 @@ class DieCutPDF(SimpleDocTemplate):
         self.chinese_city = kwargs.pop('chinese_city', '')
         super().__init__(*args, **kwargs)
         
-    def afterFlowable(self, flowable):
-        """Add header and footer to pages"""
-        if isinstance(flowable, PageBreak):
-            return
-            
-        # Footer on all pages
-        self.canv.saveState()
+    def onFirstPage(self, canvas, doc):
+        """Add header to first page"""
+        canvas.saveState()
         
-        # Top border with company color
-        self.canv.setStrokeColor(colors.HexColor('#667eea'))
-        self.canv.setLineWidth(1)
-        self.canv.line(0, 0.5*inch, self.pagesize[0], 0.5*inch)
+        # Company header at top center
+        canvas.setFont('Helvetica-Bold', 14)
+        canvas.setFillColor(colors.HexColor('#667eea'))
         
-        # Footer text with better styling
-        font_size = 9
-        self.canv.setFont('Helvetica', font_size)
+        if self.pdf_language == "zh":
+            company_name = "志途"
+            report_title = "斩刀试做报告"
+        else:
+            company_name = "Grandstep"
+            report_title = "Die Cut Test Report"
         
-        # Location info - PURE LANGUAGE BASED ON PDF LANGUAGE
+        # Company name at top center
+        canvas.drawCentredString(doc.pagesize[0]/2, doc.pagesize[1] - 0.5*inch, company_name)
+        
+        # Report title below company name
+        canvas.setFont('Helvetica-Bold', 12)
+        canvas.setFillColor(colors.HexColor('#333333'))
+        canvas.drawCentredString(doc.pagesize[0]/2, doc.pagesize[1] - 0.7*inch, report_title)
+        
+        # Add decorative line
+        canvas.setStrokeColor(colors.HexColor('#667eea'))
+        canvas.setLineWidth(1)
+        canvas.line(1*inch, doc.pagesize[1] - 0.8*inch, doc.pagesize[0] - 1*inch, doc.pagesize[1] - 0.8*inch)
+        
+        canvas.restoreState()
+        self._addFooter(canvas, doc, 1)
+        
+    def onLaterPages(self, canvas, doc):
+        """Add header to later pages"""
+        canvas.saveState()
+        
+        # Add decorative line at top of other pages
+        canvas.setStrokeColor(colors.HexColor('#e2e8f0'))
+        canvas.setLineWidth(0.5)
+        canvas.line(0.5*inch, doc.pagesize[1] - 0.5*inch, doc.pagesize[0] - 0.5*inch, doc.pagesize[1] - 0.5*inch)
+        
+        canvas.restoreState()
+        self._addFooter(canvas, doc, canvas.getPageNumber())
+        
+    def _addFooter(self, canvas, doc, page_num):
+        """Add footer to pages"""
+        canvas.saveState()
+        
+        # Footer border
+        canvas.setStrokeColor(colors.HexColor('#e2e8f0'))
+        canvas.setLineWidth(0.5)
+        canvas.line(0.5*inch, 0.6*inch, doc.pagesize[0] - 0.5*inch, 0.6*inch)
+        
+        # Footer text
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.HexColor('#666666'))
+        
+        # China timezone for footer
         china_tz = pytz.timezone('Asia/Shanghai')
         current_time = datetime.now(china_tz)
         
         if self.pdf_language == "zh":
-            # Pure Chinese for Chinese PDF
-            location_text = f"📍 地点: {self.chinese_city}"
-            date_text = f"📅 日期: {current_time.strftime('%Y年%m月%d日')}"
-            company_name = MANDARIN_TEXTS["company_name"]
-            page_text = f"第 {self.page} 页"
+            location_text = f"地点: {self.chinese_city}"
+            date_text = f"日期: {current_time.strftime('%Y年%m月%d日')}"
+            page_num_text = f"第 {page_num} 页"
         else:
-            # Pure English for English PDF
-            location_text = f"📍 Location: {self.selected_city}"
-            date_text = f"📅 Date: {current_time.strftime('%Y-%m-%d')}"
-            company_name = ENGLISH_TEXTS["company_name"]
-            page_text = f"Page {self.page}"
+            location_text = f"Location: {self.selected_city}"
+            date_text = f"Date: {current_time.strftime('%Y-%m-%d')}"
+            page_num_text = f"Page {page_num}"
         
-        # Left aligned info
-        self.canv.setFillColor(colors.HexColor('#666666'))
-        self.canv.drawString(0.5*inch, 0.15*inch, location_text)
-        self.canv.drawString(2.5*inch, 0.15*inch, date_text)
+        # Left: Location
+        canvas.drawString(0.5*inch, 0.3*inch, location_text)
         
-        # Center company name
-        self.canv.setFillColor(colors.HexColor('#667eea'))
-        self.canv.setFont('Helvetica-Bold', 10)
-        self.canv.drawCentredString(self.pagesize[0]/2, 0.15*inch, company_name)
+        # Center: Company name
+        company_footer = "志途质量检测" if self.pdf_language == "zh" else "Grandstep QC"
+        canvas.setFont('Helvetica-Bold', 8)
+        canvas.setFillColor(colors.HexColor('#667eea'))
+        canvas.drawCentredString(doc.pagesize[0]/2, 0.3*inch, company_footer)
         
-        # Right aligned page number
-        self.canv.setFillColor(colors.HexColor('#666666'))
-        self.canv.setFont('Helvetica', 9)
-        self.canv.drawRightString(self.pagesize[0] - 0.5*inch, 0.15*inch, page_text)
+        # Right: Date and page number
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.HexColor('#666666'))
+        right_text = f"{date_text} | {page_num_text}"
+        canvas.drawRightString(doc.pagesize[0] - 0.5*inch, 0.3*inch, right_text)
         
-        self.canv.restoreState()
-
+        canvas.restoreState()
 def generate_pdf():
     """Generate Die Cut Test PDF report with enhanced design"""
     buffer = io.BytesIO()
@@ -482,7 +490,7 @@ def generate_pdf():
     doc = DieCutPDF(
         buffer, 
         pagesize=A4,
-        topMargin=0.8*inch,
+        topMargin=1.2*inch,  # Increased from 0.8*inch
         bottomMargin=0.8*inch,
         leftMargin=0.6*inch,
         rightMargin=0.6*inch,
@@ -504,23 +512,13 @@ def generate_pdf():
     success_color = colors.HexColor('#48bb78')
     warning_color = colors.HexColor('#ed8936')
     
-    # Company Header Style
-    company_header_style = ParagraphStyle(
-        'CompanyHeader',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=colors.HexColor('#666666'),
-        alignment=TA_CENTER,
-        spaceAfter=0
-    )
-    
     # Title style with gradient effect simulation
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=18,
+        fontSize=16,
         textColor=primary_color,
-        spaceAfter=12,
+        spaceAfter=8,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold',
         underlineWidth=1,
@@ -533,20 +531,20 @@ def generate_pdf():
     subtitle_style = ParagraphStyle(
         'Subtitle',
         parent=styles['Normal'],
-        fontSize=10,
+        fontSize=9,
         textColor=colors.HexColor('#666666'),
         alignment=TA_CENTER,
-        spaceAfter=20
+        spaceAfter=15
     )
     
     # Section header style
     section_header_style = ParagraphStyle(
         'SectionHeader',
         parent=styles['Heading2'],
-        fontSize=12,
+        fontSize=11,
         textColor=dark_bg,
-        spaceBefore=15,
-        spaceAfter=10,
+        spaceBefore=12,
+        spaceAfter=8,
         fontName='Helvetica-Bold',
         leftIndent=0,
         borderWidth=2,
@@ -573,7 +571,7 @@ def generate_pdf():
         fontSize=9,
         alignment=TA_LEFT,
         fontName='Helvetica',
-        leading=11
+        leading=10
     )
     
     table_cell_center_style = ParagraphStyle(
@@ -582,7 +580,7 @@ def generate_pdf():
         fontSize=9,
         alignment=TA_CENTER,
         fontName='Helvetica',
-        leading=11
+        leading=10
     )
     
     table_cell_bold_style = ParagraphStyle(
@@ -591,7 +589,7 @@ def generate_pdf():
         fontSize=9,
         alignment=TA_LEFT,
         fontName='Helvetica-Bold',
-        leading=11
+        leading=10
     )
     
     # Small text style
@@ -599,7 +597,7 @@ def generate_pdf():
         'SmallStyle',
         parent=styles['Normal'],
         fontSize=8,
-        leading=10,
+        leading=9,
         fontName='Helvetica',
         textColor=colors.HexColor('#555555')
     )
@@ -608,7 +606,7 @@ def generate_pdf():
         'SmallBoldStyle',
         parent=styles['Normal'],
         fontSize=8,
-        leading=10,
+        leading=9,
         fontName='Helvetica-Bold',
         textColor=colors.HexColor('#333333')
     )
@@ -617,10 +615,10 @@ def generate_pdf():
     signature_style = ParagraphStyle(
         'Signature',
         parent=styles['Normal'],
-        fontSize=10,
+        fontSize=9,
         textColor=dark_bg,
         fontName='Helvetica-Bold',
-        leading=14
+        leading=12
     )
     
     # Disclaimer style
@@ -630,10 +628,10 @@ def generate_pdf():
         fontSize=7,
         textColor=colors.red,
         fontName='Helvetica-Oblique',
-        leading=9,
+        leading=8,
         borderWidth=1,
         borderColor=colors.HexColor('#fed7d7'),
-        borderPadding=3,
+        borderPadding=2,
         backColor=colors.HexColor('#fff5f5')
     )
     
@@ -673,15 +671,11 @@ def generate_pdf():
     
     # ========== REPORT HEADER ==========
     
-    # Company header
-    company_text = get_pdf_text("company_name", pdf_lang)
-    elements.append(create_paragraph(company_text, company_header_style))
-    
-    # Main Title with decorative elements
+    # Main Title
     title_text = get_pdf_text("title", pdf_lang)
     elements.append(create_paragraph(title_text, title_style, bold=True))
     
-    # Subtitle with test dates - PURE LANGUAGE
+    # Subtitle with test dates
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
     
@@ -689,58 +683,63 @@ def generate_pdf():
     batch_test_date = st.session_state.get('batch_test_date', current_time)
     
     if pdf_lang == "zh":
-        # Pure Chinese subtitle
-        subtitle_text = f"{get_pdf_text('report_generated', pdf_lang)}: {current_time.strftime('%Y年%m月%d日 %H:%M')}"
-        if chinese_city:
-            subtitle_text += f" | {get_pdf_text('test_location', pdf_lang)}: {chinese_city}"
+        # Pure Chinese date format
+        subtitle_text = f"报告生成: {current_time.strftime('%Y年%m月%d日 %H时%M分')} | 测试地点: {chinese_city}"
     else:
-        # Pure English subtitle
-        subtitle_text = f"{get_pdf_text('report_generated', pdf_lang)}: {current_time.strftime('%Y-%m-%d %H:%M')}"
-        if selected_city:
-            subtitle_text += f" | {get_pdf_text('test_location', pdf_lang)}: {selected_city}"
+        # Pure English date format
+        subtitle_text = f"Report Generated: {current_time.strftime('%Y-%m-%d %H:%M')} | Test Location: {selected_city}"
     
     elements.append(create_paragraph(subtitle_text, subtitle_style))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 8))
     
     # Add decorative line
-    elements.append(create_paragraph("─" * 100, ParagraphStyle(
-        'Line',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=primary_color,
-        alignment=TA_CENTER
-    )))
-    elements.append(Spacer(1, 15))
+
+    elements.append(Spacer(1, 12))
     
     # ========== TEST DATES HEADER ==========
     
     die_cut_text = get_pdf_text("die_cut_test", pdf_lang)
     batches_text = get_pdf_text("batch_test", pdf_lang)
+    date_text = get_pdf_text("signature_date", pdf_lang)
     
-    # Create a more attractive test date header
-    test_header_data = [
-        [
-            create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
-            create_paragraph(":", small_bold_style),
-            create_paragraph(die_cut_date.strftime('%Y-%m-%d') if hasattr(die_cut_date, 'strftime') else str(die_cut_date), small_bold_style),
-            create_paragraph("|", small_style),
-            create_paragraph(batches_text, table_cell_bold_style, bold=True),
-            create_paragraph(":", small_bold_style),
-            create_paragraph(batch_test_date.strftime('%Y-%m-%d') if hasattr(batch_test_date, 'strftime') else str(batch_test_date), small_bold_style)
+    # Create test date header with pure language
+    if pdf_lang == "zh":
+        test_header_data = [
+            [
+                create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
+                create_paragraph(":", small_bold_style),
+                create_paragraph(die_cut_date.strftime('%Y年%m月%d日') if hasattr(die_cut_date, 'strftime') else str(die_cut_date), small_bold_style),
+                create_paragraph("", small_style),
+                create_paragraph(batches_text, table_cell_bold_style, bold=True),
+                create_paragraph(":", small_bold_style),
+                create_paragraph(batch_test_date.strftime('%Y年%m月%d日') if hasattr(batch_test_date, 'strftime') else str(batch_test_date), small_bold_style)
+            ]
         ]
-    ]
+    else:
+        test_header_data = [
+            [
+                create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
+                create_paragraph(":", small_bold_style),
+                create_paragraph(die_cut_date.strftime('%Y-%m-%d') if hasattr(die_cut_date, 'strftime') else str(die_cut_date), small_bold_style),
+                create_paragraph("", small_style),
+                create_paragraph(batches_text, table_cell_bold_style, bold=True),
+                create_paragraph(":", small_bold_style),
+                create_paragraph(batch_test_date.strftime('%Y-%m-%d') if hasattr(batch_test_date, 'strftime') else str(batch_test_date), small_bold_style)
+            ]
+        ]
     
-    test_header_table = Table(test_header_data, colWidths=[1.5*inch, 0.2*inch, 1.0*inch, 0.3*inch, 1.5*inch, 0.2*inch, 1.0*inch])
+    test_header_table = Table(test_header_data, colWidths=[1.2*inch, 0.1*inch, 1.0*inch, 0.2*inch, 1.2*inch, 0.1*inch, 1.0*inch])
     test_header_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('LINEABOVE', (0, 0), (-1, -1), 0.5, primary_color),
         ('LINEBELOW', (0, 0), (-1, -1), 0.5, primary_color),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('PADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(test_header_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
     # ========== BASIC INFORMATION ==========
     
@@ -758,7 +757,7 @@ def generate_pdf():
     factory_style_val = st.session_state.get('factory_style', '')
     ship_date_val = st.session_state.get('ship_date', '')
     
-    # Create a cleaner table layout
+    # Create a cleaner table layout with pure language
     basic_data = []
     
     # Row 1
@@ -767,11 +766,11 @@ def generate_pdf():
     agent_label = get_pdf_text("agent_factory", pdf_lang)
     
     basic_data.append([
-        create_paragraph(f"● {contract_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{contract_label}", table_cell_bold_style, bold=True),
         create_paragraph(contract_no_val, table_cell_style),
-        create_paragraph(f"● {brand_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{brand_label}", table_cell_bold_style, bold=True),
         create_paragraph(brand_val, table_cell_style),
-        create_paragraph(f"● {agent_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{agent_label}", table_cell_bold_style, bold=True),
         create_paragraph(agent_factory_val, table_cell_style)
     ])
     
@@ -781,11 +780,11 @@ def generate_pdf():
     sales_label = get_pdf_text("sales", pdf_lang)
     
     basic_data.append([
-        create_paragraph(f"● {style_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{style_label}", table_cell_bold_style, bold=True),
         create_paragraph(style_name_val, table_cell_style),
-        create_paragraph(f"● {qty_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{qty_label}", table_cell_bold_style, bold=True),
         create_paragraph(qty_val, table_cell_style),
-        create_paragraph(f"● {sales_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{sales_label}", table_cell_bold_style, bold=True),
         create_paragraph(sales_val, table_cell_style)
     ])
     
@@ -793,25 +792,30 @@ def generate_pdf():
     factory_label = get_pdf_text("factory_style", pdf_lang)
     ship_label = get_pdf_text("ship_date", pdf_lang)
     
+    if pdf_lang == "zh":
+        ship_date_formatted = ship_date_val.strftime('%Y年%m月%d日') if hasattr(ship_date_val, 'strftime') else str(ship_date_val)
+    else:
+        ship_date_formatted = ship_date_val.strftime('%Y-%m-%d') if hasattr(ship_date_val, 'strftime') else str(ship_date_val)
+    
     basic_data.append([
-        create_paragraph(f"● {factory_label}", table_cell_bold_style, bold=True),
+        create_paragraph(f"{factory_label}", table_cell_bold_style, bold=True),
         create_paragraph(factory_style_val, table_cell_style),
-        create_paragraph(f"● {ship_label}", table_cell_bold_style, bold=True),
-        create_paragraph(ship_date_val.strftime('%Y-%m-%d') if hasattr(ship_date_val, 'strftime') else str(ship_date_val), table_cell_style),
+        create_paragraph(f"{ship_label}", table_cell_bold_style, bold=True),
+        create_paragraph(ship_date_formatted, table_cell_style),
         create_paragraph("", table_cell_bold_style),
         create_paragraph("", table_cell_style)
     ])
     
-    basic_table = Table(basic_data, colWidths=[1.0*inch, 1.5*inch, 0.8*inch, 1.2*inch, 1.0*inch, 1.5*inch])
+    basic_table = Table(basic_data, colWidths=[0.9*inch, 1.4*inch, 0.8*inch, 1.2*inch, 0.9*inch, 1.4*inch])
     basic_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
-        ('PADDING', (0, 0), (-1, -1), 5),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f7fafc'), colors.white]),
+        ('PADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(basic_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 12))
     
     # ========== QUANTITY INFORMATION ==========
     
@@ -825,9 +829,9 @@ def generate_pdf():
     
     qty_data = [
         [
-            create_paragraph(f"📏 {size_label}", table_cell_bold_style, bold=True),
-            create_paragraph(f"🔢 {die_qty_label}", table_cell_bold_style, bold=True),
-            create_paragraph(f"📦 {batch_qty_label}", table_cell_bold_style, bold=True)
+            create_paragraph(size_label, table_cell_bold_style, bold=True),
+            create_paragraph(die_qty_label, table_cell_bold_style, bold=True),
+            create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
         ],
         [
             create_paragraph(size_val, table_cell_center_style),
@@ -843,28 +847,28 @@ def generate_pdf():
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('PADDING', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('PADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(qty_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
     # ========== MAIN CHECK POINTS ==========
     
     main_check_title = create_paragraph(get_pdf_text("main_check", pdf_lang), section_header_style, bold=True)
     elements.append(main_check_title)
     
-    # Create a visually appealing check points table
+    # Create a visually appealing check points table with pure language
     check_header = [
-        create_paragraph("✓ " + get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
+        create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
         create_paragraph(get_pdf_text("yes", pdf_lang), table_header_style, bold=True),
         create_paragraph(get_pdf_text("no", pdf_lang), table_header_style, bold=True),
-        create_paragraph("💬 " + get_pdf_text("comments", pdf_lang), table_header_style, bold=True)
+        create_paragraph(get_pdf_text("comments", pdf_lang), table_header_style, bold=True)
     ]
     
     check_data = [check_header]
     
-    # Define check items - PURE LANGUAGE
+    # Define check items
     check_items = [
         (get_pdf_text("last_no_correct", pdf_lang), "last_no_yes", "last_no_no", "last_no_comments"),
         (get_pdf_text("color_matches", pdf_lang), "color_yes", "color_no", "color_comments"),
@@ -875,8 +879,8 @@ def generate_pdf():
     ]
     
     for item, yes_key, no_key, comment_key in check_items:
-        yes_check = "✅" if st.session_state.get(yes_key, False) else "⬜"
-        no_check = "✅" if st.session_state.get(no_key, False) else "⬜"
+        yes_check = "✓" if st.session_state.get(yes_key, False) else ""
+        no_check = "✓" if st.session_state.get(no_key, False) else ""
         comment = st.session_state.get(comment_key, '')
         
         row = [
@@ -887,19 +891,19 @@ def generate_pdf():
         ]
         check_data.append(row)
     
-    check_table = Table(check_data, colWidths=[2.5*inch, 0.5*inch, 0.5*inch, 3.0*inch])
+    check_table = Table(check_data, colWidths=[2.2*inch, 0.4*inch, 0.4*inch, 2.6*inch])
     check_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (1, 1), (2, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 5),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('PADDING', (0, 0), (-1, -1), 4),
         ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
     ]))
     elements.append(check_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
     # ========== TECHNICAL SPECIFICATIONS ==========
     
@@ -907,7 +911,7 @@ def generate_pdf():
     elements.append(tech_specs_title)
     
     # Tech specs comparison with better styling
-    same_check = "✅" if st.session_state.get('tech_specs_same', False) else "⬜"
+    same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
     tech_specs_comments_val = st.session_state.get('tech_specs_comments', '')
     
     same_label = get_pdf_text("same", pdf_lang)
@@ -915,9 +919,9 @@ def generate_pdf():
     
     tech_data = [
         [
-            create_paragraph("📐 " + same_label, table_cell_bold_style, bold=True),
+            create_paragraph(same_label, table_cell_bold_style, bold=True),
             create_paragraph(same_check, table_cell_center_style),
-            create_paragraph("📝 " + if_not_label, table_cell_bold_style, bold=True)
+            create_paragraph(if_not_label, table_cell_bold_style, bold=True)
         ],
         [
             create_paragraph("", table_cell_style),
@@ -926,107 +930,41 @@ def generate_pdf():
         ]
     ]
     
-    tech_table = Table(tech_data, colWidths=[1.2*inch, 0.5*inch, 5.0*inch])
+    tech_table = Table(tech_data, colWidths=[1.0*inch, 0.4*inch, 4.2*inch])
     tech_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (2, 0), colors.HexColor('#f0f4ff')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 6),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('PADDING', (0, 0), (-1, -1), 4),
         ('SPAN', (2, 0), (2, -1)),
     ]))
     elements.append(tech_table)
-    elements.append(Spacer(1, 20))
-    
-    # ========== TEST RESULTS ==========
-    
-    test_results_title = create_paragraph("🧪 " + get_pdf_text("test_results", pdf_lang), section_header_style, bold=True)
-    elements.append(test_results_title)
-    
-    # Test results table with improved design
-    test_header = [
-        create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("result", pdf_lang), table_header_style, bold=True),
-        create_paragraph("📏 " + get_pdf_text("client_standard", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("pass_fail", pdf_lang), table_header_style, bold=True)
-    ]
-    
-    test_data = [test_header]
-    
-    # Test items - PURE LANGUAGE UNITS
-    test_items = [
-        (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
-         get_pdf_unit("sole_bonding", pdf_lang)),
-        (get_pdf_text("heel_attachment", pdf_lang), "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail",
-         get_pdf_unit("heel_attachment", pdf_lang)),
-        (get_pdf_text("top_piece", pdf_lang), "top_piece_result", "top_piece_pass", "top_piece_fail",
-         get_pdf_unit("top_piece", pdf_lang)),
-        (get_pdf_text("insole_perment", pdf_lang), "insole_perment_result", "insole_perment_pass", "insole_perment_fail",
-         get_pdf_unit("insole_perment", pdf_lang)),
-        (get_pdf_text("straps_strength", pdf_lang), "straps_strength_result", "straps_strength_pass", "straps_strength_fail",
-         get_pdf_unit("straps_strength", pdf_lang)),
-        (get_pdf_text("toe_post", pdf_lang), "toe_post_result", "toe_post_pass", "toe_post_fail",
-         get_pdf_unit("toe_post", pdf_lang))
-    ]
-    
-    for item, result_key, pass_key, fail_key, standard in test_items:
-        result = st.session_state.get(result_key, '')
-        pass_check = st.session_state.get(pass_key, False)
-        fail_check = st.session_state.get(fail_key, False)
-        
-        if pass_check:
-            status = create_paragraph("✅ " + ("PASS" if pdf_lang == "en" else "通过"), pass_style)
-        elif fail_check:
-            status = create_paragraph("❌ " + ("FAIL" if pdf_lang == "en" else "失败"), fail_style)
-        else:
-            status = create_paragraph("⏳ " + ("PENDING" if pdf_lang == "en" else "待定"), small_style)
-        
-        row = [
-            create_paragraph(item, table_cell_style),
-            create_paragraph(result if result else "-", table_cell_center_style),
-            create_paragraph(standard, small_style),
-            status
-        ]
-        test_data.append(row)
-    
-    test_table = Table(test_data, colWidths=[2.0*inch, 1.0*inch, 2.0*inch, 1.0*inch])
-    test_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
-        ('ALIGN', (3, 1), (3, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 6),
-        ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-    ]))
-    elements.append(test_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
     # ========== TECH COMMENTS ==========
     
-    tech_comments_title = create_paragraph("💡 " + get_pdf_text("tech_comments_completed", pdf_lang), 
+    tech_comments_title = create_paragraph(get_pdf_text("tech_comments_completed", pdf_lang), 
                                           ParagraphStyle(
                                               'TechComments',
                                               parent=section_header_style,
-                                              fontSize=11,
-                                              spaceAfter=8
+                                              fontSize=10,
+                                              spaceAfter=6
                                           ), bold=True)
     elements.append(tech_comments_title)
     
-    tech_comments_yes = "✅" if st.session_state.get('tech_comments_yes', False) else "⬜"
-    tech_comments_no = "✅" if st.session_state.get('tech_comments_no', False) else "⬜"
+    tech_comments_yes = "✓" if st.session_state.get('tech_comments_yes', False) else ""
+    tech_comments_no = "✓" if st.session_state.get('tech_comments_no', False) else ""
     tech_comments_desc = st.session_state.get('tech_comments_description', '')
     
-    yes_text = get_pdf_text("yes", pdf_lang)
-    no_text = get_pdf_text("no", pdf_lang)
+    yes_label = get_pdf_text("yes", pdf_lang)
+    no_label = get_pdf_text("no", pdf_lang)
     
     comments_data = [
         [
-            create_paragraph("✅ " + yes_text, table_cell_bold_style, bold=True),
+            create_paragraph(yes_label, table_cell_bold_style, bold=True),
             create_paragraph(tech_comments_yes, table_cell_center_style),
-            create_paragraph("❌ " + no_text + " ➜", table_cell_bold_style, bold=True),
+            create_paragraph(no_label, table_cell_bold_style, bold=True),
             create_paragraph(tech_comments_no, table_cell_center_style),
             create_paragraph(get_pdf_text("if_not_same", pdf_lang), table_cell_bold_style, bold=True)
         ],
@@ -1039,46 +977,133 @@ def generate_pdf():
         ]
     ]
     
-    comments_table = Table(comments_data, colWidths=[0.8*inch, 0.4*inch, 0.8*inch, 0.4*inch, 4.3*inch])
+    comments_table = Table(comments_data, colWidths=[0.6*inch, 0.3*inch, 0.6*inch, 0.3*inch, 4.0*inch])
     comments_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (4, 0), colors.HexColor('#f0f4ff')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (1, 0), (3, 0), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 6),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('PADDING', (0, 0), (-1, -1), 4),
         ('SPAN', (4, 0), (4, -1)),
     ]))
     elements.append(comments_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
+    
+    # ========== TEST RESULTS ==========
+    
+    test_results_title = create_paragraph(get_pdf_text("test_results", pdf_lang), section_header_style, bold=True)
+    elements.append(test_results_title)
+    
+    # Test results table with pure language
+    test_header = [
+        create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
+        create_paragraph(get_pdf_text("result", pdf_lang), table_header_style, bold=True),
+        create_paragraph(get_pdf_text("client_standard", pdf_lang), table_header_style, bold=True),
+        create_paragraph(get_pdf_text("pass_fail", pdf_lang), table_header_style, bold=True)
+    ]
+    
+    test_data = [test_header]
+    
+    # Test items with pure language standards
+    if pdf_lang == "zh":
+        test_items = [
+            (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
+             "边墙鞋≥2.0 N/mm\n其他≥3.0 N/mm"),
+            (get_pdf_text("heel_attachment", pdf_lang), "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail",
+             "≥500N"),
+            (get_pdf_text("top_piece", pdf_lang), "top_piece_result", "top_piece_pass", "top_piece_fail",
+             "≥140N"),
+            (get_pdf_text("insole_perment", pdf_lang), "insole_perment_result", "insole_perment_pass", "insole_perment_fail",
+             "400N时变形量≤15%"),
+            (get_pdf_text("straps_strength", pdf_lang), "straps_strength_result", "straps_strength_pass", "straps_strength_fail",
+             "女鞋≥200N\n男鞋≥250N\n弹性部位≥150N\n童鞋≥250N"),
+            (get_pdf_text("toe_post", pdf_lang), "toe_post_result", "toe_post_pass", "toe_post_fail",
+             "EVA和橡胶材料≥150N\n其他材料≥200N")
+        ]
+    else:
+        test_items = [
+            (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
+             "Sidewall shoes ≥2.0 N/mm\nOthers ≥3.0 N/mm"),
+            (get_pdf_text("heel_attachment", pdf_lang), "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail",
+             "≥500N"),
+            (get_pdf_text("top_piece", pdf_lang), "top_piece_result", "top_piece_pass", "top_piece_fail",
+             "≥140N"),
+            (get_pdf_text("insole_perment", pdf_lang), "insole_perment_result", "insole_perment_pass", "insole_perment_fail",
+             "Deformation ≤15%\nat 400N"),
+            (get_pdf_text("straps_strength", pdf_lang), "straps_strength_result", "straps_strength_pass", "straps_strength_fail",
+             "Women ≥200N\nMen ≥250N\nElastic ≥150N\nChildren ≥250N"),
+            (get_pdf_text("toe_post", pdf_lang), "toe_post_result", "toe_post_pass", "toe_post_fail",
+             "EVA & rubber ≥150N\nOther ≥200N")
+        ]
+    
+    for item, result_key, pass_key, fail_key, standard in test_items:
+        result = st.session_state.get(result_key, '')
+        pass_check = st.session_state.get(pass_key, False)
+        fail_check = st.session_state.get(fail_key, False)
+        
+        if pass_check:
+            status = create_paragraph("PASS", pass_style)
+        elif fail_check:
+            status = create_paragraph("FAIL", fail_style)
+        else:
+            if pdf_lang == "zh":
+                status = create_paragraph("待定", small_style)
+            else:
+                status = create_paragraph("PENDING", small_style)
+        
+        row = [
+            create_paragraph(item, table_cell_style),
+            create_paragraph(result if result else "-", table_cell_center_style),
+            create_paragraph(standard, small_style),
+            status
+        ]
+        test_data.append(row)
+    
+    test_table = Table(test_data, colWidths=[1.8*inch, 0.9*inch, 1.8*inch, 0.9*inch])
+    test_table.setStyle(TableStyle([
+    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+    ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),  # Center align all cells
+    ('FONTSIZE', (0, 0), (-1, -1), 8),
+    ('PADDING', (0, 0), (-1, -1), 4),
+    ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+]))
+    elements.append(test_table)
+    elements.append(Spacer(1, 15))
     
     # ========== ISSUES & SOLUTIONS ==========
     
-    issues_title = create_paragraph("⚠️ " + get_pdf_text("issues_solutions", pdf_lang), section_header_style, bold=True)
+    issues_title = create_paragraph(get_pdf_text("issues_solutions", pdf_lang), section_header_style, bold=True)
     elements.append(issues_title)
     
     # Two-column layout for issues
     die_cut_issues = st.session_state.get('die_cut_issues', '')
     batch_test_issues = st.session_state.get('batch_test_issues', '')
     
-    no_issues_text = "No issues reported" if pdf_lang == "en" else "无问题报告"
+    if pdf_lang == "zh":
+        no_issues_text = "无问题报告"
+    else:
+        no_issues_text = "No issues reported"
     
     issues_data = [
         [
-            create_paragraph("🔪 " + get_pdf_text("die_cut_test", pdf_lang), 
+            create_paragraph(get_pdf_text("die_cut_test", pdf_lang), 
                            ParagraphStyle(
                                'IssuesHeader',
                                parent=table_cell_bold_style,
-                               fontSize=10,
+                               fontSize=9,
                                textColor=primary_color,
                                alignment=TA_CENTER,
                                backColor=colors.HexColor('#f0f4ff')
                            ), bold=True),
-            create_paragraph("📦 " + get_pdf_text("batch_test", pdf_lang), 
+            create_paragraph(get_pdf_text("batch_test", pdf_lang), 
                            ParagraphStyle(
                                'IssuesHeader',
                                parent=table_cell_bold_style,
-                               fontSize=10,
+                               fontSize=9,
                                textColor=secondary_color,
                                alignment=TA_CENTER,
                                backColor=colors.HexColor('#f5f0ff')
@@ -1089,99 +1114,116 @@ def generate_pdf():
                            ParagraphStyle(
                                'IssuesContent',
                                parent=table_cell_style,
-                               fontSize=9,
+                               fontSize=8,
                                borderWidth=1,
                                borderColor=colors.HexColor('#e2e8f0'),
-                               borderPadding=8,
+                               borderPadding=6,
                                backColor=colors.HexColor('#f8f9fa')
                            )),
             create_paragraph(batch_test_issues if batch_test_issues else no_issues_text, 
                            ParagraphStyle(
                                'IssuesContent',
                                parent=table_cell_style,
-                               fontSize=9,
+                               fontSize=8,
                                borderWidth=1,
                                borderColor=colors.HexColor('#e2e8f0'),
-                               borderPadding=8,
+                               borderPadding=6,
                                backColor=colors.HexColor('#f8f9fa')
                            ))
         ]
     ]
     
-    issues_table = Table(issues_data, colWidths=[3.0*inch, 3.0*inch])
+    issues_table = Table(issues_data, colWidths=[2.8*inch, 2.8*inch])
     issues_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('PADDING', (0, 0), (-1, -1), 5),
-        ('LINEBELOW', (0, 0), (-1, 0), 2, colors.HexColor('#c3dafe')),
+        ('PADDING', (0, 0), (-1, -1), 4),
+        ('LINEBELOW', (0, 0), (-1, 0), 1.5, colors.HexColor('#c3dafe')),
     ]))
     elements.append(issues_table)
-    elements.append(Spacer(1, 25))
+    elements.append(Spacer(1, 20))
     
     # ========== SIGNATURES ==========
     
-    signatures_title = create_paragraph("✍️ " + get_pdf_text("signatures", pdf_lang), section_header_style, bold=True)
+       # ========== SIGNATURES ==========
+    
+    signatures_title = create_paragraph(get_pdf_text("signatures", pdf_lang), section_header_style, bold=True)
     elements.append(signatures_title)
     
     signature_date_val = st.session_state.get('signature_date', current_time)
     
-    # Create signature boxes - PURE LANGUAGE
+    # Create professional signature table
     signatures = [
-        (get_pdf_text("factory_rep", pdf_lang), "factory_representative"),
-        (get_pdf_text("gs_qc", pdf_lang), "gs_qc"),
-        (get_pdf_text("gs_tech", pdf_lang), "grandstep_technician"),
-        (get_pdf_text("area_manager", pdf_lang), "area_manager"),
-        (get_pdf_text("qa_manager", pdf_lang), "qa_manager"),
-        (get_pdf_text("signature_date", pdf_lang), None, signature_date_val.strftime('%Y-%m-%d') if hasattr(signature_date_val, 'strftime') else str(signature_date_val))
+        (get_pdf_text("factory_rep", pdf_lang), "factory_representative", get_pdf_text("signature_date", pdf_lang)),
+        (get_pdf_text("gs_qc", pdf_lang), "gs_qc", get_pdf_text("signature_date", pdf_lang)),
+        (get_pdf_text("gs_tech", pdf_lang), "grandstep_technician", get_pdf_text("signature_date", pdf_lang)),
+        (get_pdf_text("area_manager", pdf_lang), "area_manager", get_pdf_text("signature_date", pdf_lang)),
+        (get_pdf_text("qa_manager", pdf_lang), "qa_manager", get_pdf_text("signature_date", pdf_lang)),
     ]
     
-    sig_data = []
-    for i in range(0, len(signatures), 3):
-        row = []
-        for j in range(3):
-            if i + j < len(signatures):
-                label, key, *extra = signatures[i + j]
-                if key:
-                    value = st.session_state.get(key, '')
-                else:
-                    value = extra[0] if extra else ''
-                
-                # Create signature cell with underline
-                sig_cell = [
-                    create_paragraph(label + ":", small_bold_style, bold=True),
-                    create_paragraph("_" * 20, ParagraphStyle(
-                        'SignatureLine',
-                        parent=table_cell_style,
-                        fontSize=10,
-                        textColor=dark_bg
-                    )),
-                    create_paragraph(value if value else " ", small_style)
-                ]
-                
-                sig_table = Table([sig_cell], colWidths=[1.5*inch])
-                sig_table.setStyle(TableStyle([
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-                    ('PADDING', (0, 0), (-1, -1), 0),
-                ]))
-                
-                row.append(sig_table)
-            else:
-                row.append(create_paragraph("", table_cell_style))
-        sig_data.append(row)
+    # Format date based on language
+    if pdf_lang == "zh":
+        date_formatted = signature_date_val.strftime('%Y年%m月%d日') if hasattr(signature_date_val, 'strftime') else str(signature_date_val)
+    else:
+        date_formatted = signature_date_val.strftime('%Y-%m-%d') if hasattr(signature_date_val, 'strftime') else str(signature_date_val)
     
-    signatures_table = Table(sig_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+    # Create signature data
+    sig_data = []
+    
+    # Header row
+    header_style = ParagraphStyle(
+        'SignatureHeader',
+        parent=table_cell_bold_style,
+        fontSize=9,
+        alignment=TA_CENTER,
+        textColor=colors.white,
+        backColor=primary_color
+    )
+    
+    sig_data.append([
+        create_paragraph(get_pdf_text("check_items", pdf_lang), header_style),
+        create_paragraph("Name/Signature", header_style),
+        create_paragraph("Date", header_style)
+    ])
+    
+    # Signature rows
+    for label, key, date_label in signatures:
+        value = st.session_state.get(key, '')
+        
+        sig_row = [
+            create_paragraph(label, table_cell_bold_style, bold=True),
+            create_paragraph(value if value else "___________________", 
+                           ParagraphStyle(
+                               'SignatureLine',
+                               parent=table_cell_style,
+                               fontSize=10,
+                               textColor=dark_bg
+                           )),
+            create_paragraph(date_formatted, table_cell_center_style)
+        ]
+        sig_data.append(sig_row)
+    
+    # Create signature table with professional styling
+    signatures_table = Table(sig_data, colWidths=[2.0*inch, 2.5*inch, 1.5*inch])
     signatures_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('PADDING', (0, 0), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # Center align header
+        ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Center align dates
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('PADDING', (0, 0), (-1, -1), 8),
+        ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.white),  # White line under header
     ]))
+    
     elements.append(signatures_table)
     elements.append(Spacer(1, 15))
-    
     # ========== FOOTER NOTES ==========
     
-    # Updated date - PURE LANGUAGE
+    # Updated date
     updated_text = get_pdf_text("updated_2022", pdf_lang)
-    elements.append(create_paragraph(f"📅 {updated_text}", 
+    elements.append(create_paragraph(updated_text, 
                                    ParagraphStyle(
                                        'Updated',
                                        parent=small_style,
@@ -1189,24 +1231,30 @@ def generate_pdf():
                                        fontSize=7
                                    )))
     
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 8))
     
-    # Disclaimer with better styling - PURE LANGUAGE
-    disclaimer_text = get_pdf_text("disclaimer_text", pdf_lang)
-    elements.append(create_paragraph("⚠️ " + disclaimer_text, disclaimer_style))
+    # Disclaimer with better styling
+ 
     
     # Final decorative element
-    elements.append(create_paragraph("•" * 100, ParagraphStyle(
+    elements.append(create_paragraph("•" * 80, ParagraphStyle(
         'EndLine',
         parent=styles['Normal'],
-        fontSize=8,
+        fontSize=7,
         textColor=primary_color,
         alignment=TA_CENTER,
-        spaceBefore=10
+        spaceBefore=8
     )))
     
     # Build PDF
-    doc.build(elements)
+    try:
+        doc.build(elements)
+    except Exception as e:
+        # Fallback to simple build if custom class fails
+        SimpleDocTemplate.build(doc, elements)
+    
+    buffer.seek(0)
+    return buffer
     buffer.seek(0)
     return buffer
 
@@ -1685,9 +1733,7 @@ with tab4:
         )
     
     # Disclaimer
-    st.markdown("---")
-    st.markdown(f"#### {ICONS['warning']} {get_text('disclaimer')}")
-    st.warning(get_text("disclaimer_text"))
+ 
 
 # Generate PDF Button
 st.markdown("---")
@@ -1706,8 +1752,7 @@ with col2:
                     with st.expander(f"{ICONS['info']} {get_text('pdf_details')}"):
                         col_info1, col_info2 = st.columns(2)
                         with col_info1:
-                            city_display = CHINESE_CITIES[selected_city] if st.session_state.pdf_language == "zh" else selected_city
-                            st.metric(get_text("location"), city_display)
+                            st.metric(get_text("location"), f"{selected_city} ({CHINESE_CITIES[selected_city]})")
                             st.metric(get_text("report_language"), "Mandarin" if st.session_state.pdf_language == "zh" else "English")
                         with col_info2:
                             china_tz = pytz.timezone('Asia/Shanghai')
