@@ -455,36 +455,45 @@ def insert_numbers_back(translated_text, original_numbers):
     if not translated_text or not original_numbers:
         return translated_text
     
+    # Ensure translated_text is a string
+    translated_str = str(translated_text) if translated_text is not None else ""
+    
     # Sort numbers by position
     sorted_numbers = sorted(original_numbers, key=lambda x: x['start'])
     
     # For now, just return translated text with numbers appended if they seem missing
     # This is a simplified approach
-    result = translated_text
+    result = translated_str
     for num in sorted_numbers:
-        if num['value'] not in result:
+        num_value = str(num['value']) if num['value'] is not None else ""
+        if num_value and num_value not in result:
             # Add number at the end if not found
-            result += f" {num['value']}"
+            result += f" {num_value}"
     
     return result.strip()
 
 def translate_text_with_openai(text, target_language):
     """Translate text using OpenAI with number preservation"""
-    if not text or text.strip() == "":
+    # Handle None or empty text
+    if text is None:
+        return ""
+    
+    text_str = str(text).strip()
+    if text_str == "":
         return ""
     
     # Check cache first
-    cache_key = (text, target_language)
+    cache_key = (text_str, target_language)
     if cache_key in st.session_state.translation_cache:
         cached_result = st.session_state.translation_cache[cache_key]
         return str(cached_result) if cached_result is not None else ""
     
     # Extract and preserve numbers
-    original_numbers = extract_and_preserve_numbers(text)
+    original_numbers = extract_and_preserve_numbers(text_str)
     
     # If no OpenAI client, return original text
     if not openai_client:
-        return str(text) if text is not None else ""
+        return text_str
     
     # Map language codes to OpenAI format
     if target_language == "zh":
@@ -498,7 +507,7 @@ def translate_text_with_openai(text, target_language):
         IMPORTANT: Preserve all numbers, measurements, units, and special codes exactly as they are.
         Do not translate numbers, dates in format YYYY-MM-DD, contract numbers, or technical codes.
         
-        Text to translate: {text}
+        Text to translate: {text_str}
         
         Translation:"""
         
@@ -518,14 +527,14 @@ def translate_text_with_openai(text, target_language):
         translated_with_numbers = insert_numbers_back(translated, original_numbers)
         
         # Cache the result
-        st.session_state.translation_cache[cache_key] = translated_with_numbers
-        return str(translated_with_numbers) if translated_with_numbers is not None else ""
+        result = translated_with_numbers if translated_with_numbers else translated
+        st.session_state.translation_cache[cache_key] = result
+        return str(result) if result is not None else text_str
         
     except Exception as e:
         st.error(f"Translation error: {str(e)}")
         # Return original text if translation fails
-        return str(text) if text is not None else ""
-
+        return text_str
 def get_display_value(field_key):
     """Get value for display based on current UI language"""
     # Get the stored English value
@@ -549,34 +558,36 @@ def update_english_value(field_key, displayed_value):
         st.session_state.english_values[field_key] = ''
         return
     
+    # Ensure displayed_value is a string
+    display_str = str(displayed_value).strip()
+    
     if st.session_state.ui_language == "en":
         # User entered text in English, store directly
-        st.session_state.english_values[field_key] = displayed_value.strip()
+        st.session_state.english_values[field_key] = display_str
     else:
         # User entered text in Mandarin UI, but we need to translate it to English for storage
         # However, the user might be typing in English even when UI is Mandarin
         # So we need to detect if it's already English
         
-        # Simple check: if text contains Chinese characters, translate to English
-        # If it's already English, store directly
         def contains_chinese(text):
             """Check if text contains Chinese characters"""
             if not text:
                 return False
+            # Ensure text is a string
+            text_str = str(text) if text is not None else ""
             # Check for Chinese Unicode characters
-            for char in text:
+            for char in text_str:
                 if '\u4e00' <= char <= '\u9fff':
                     return True
             return False
         
-        if contains_chinese(displayed_value):
+        if contains_chinese(display_str):
             # Translate to English for storage
-            english_text = translate_text_with_openai(displayed_value.strip(), "en")
+            english_text = translate_text_with_openai(display_str, "en")
             st.session_state.english_values[field_key] = english_text
         else:
             # Already in English, store directly
-            st.session_state.english_values[field_key] = displayed_value.strip()
-
+            st.session_state.english_values[field_key] = display_str
 def get_pdf_display_value(field_key, pdf_language):
     """Get value for PDF generation based on PDF language"""
     # Get the stored English value
