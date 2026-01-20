@@ -15,7 +15,7 @@ import pytz
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
-import sys
+import re
 
 # Load environment variables
 load_dotenv()
@@ -198,7 +198,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
+# Initialize session state for user inputs
 if 'ui_language' not in st.session_state:
     st.session_state.ui_language = "en"
 if 'pdf_language' not in st.session_state:
@@ -418,15 +418,63 @@ def get_pdf_text(key, pdf_language):
     else:
         return ENGLISH_TEXTS.get(key, key)
 
+def extract_and_preserve_numbers(text):
+    """Extract numbers and their positions from text"""
+    if not text:
+        return []
+    
+    # Find all numbers and their positions
+    number_patterns = [
+        (r'\d+\.\d+', float),  # Decimal numbers
+        (r'\d+', int),         # Whole numbers
+    ]
+    
+    numbers = []
+    for pattern, type_func in number_patterns:
+        for match in re.finditer(pattern, text):
+            numbers.append({
+                'start': match.start(),
+                'end': match.end(),
+                'value': match.group(),
+                'type': type_func
+            })
+    
+    return numbers
+
+def insert_numbers_back(translated_text, original_numbers):
+    """Insert preserved numbers back into translated text"""
+    if not translated_text or not original_numbers:
+        return translated_text
+    
+    # Sort numbers by position
+    sorted_numbers = sorted(original_numbers, key=lambda x: x['start'])
+    
+    # For now, just return translated text with numbers appended if they seem missing
+    # This is a simplified approach
+    result = translated_text
+    for num in sorted_numbers:
+        if num['value'] not in result:
+            # Add number at the end if not found
+            result += f" {num['value']}"
+    
+    return result.strip()
+
 def translate_text_with_openai(text, target_language):
-    """Translate text using OpenAI with caching"""
+    """Translate text using OpenAI with number preservation"""
     if not text or text.strip() == "":
         return text
     
-    # Check cache
+    # Check cache first
     cache_key = (text, target_language)
     if cache_key in st.session_state.translation_cache:
         return st.session_state.translation_cache[cache_key]
+    
+    # Extract and preserve numbers
+    original_numbers = extract_and_preserve_numbers(text)
+    
+    # If no OpenAI client, return original text
+    if not openai_client:
+        return text
     
     # Map language codes to OpenAI format
     if target_language == "zh":
@@ -435,28 +483,47 @@ def translate_text_with_openai(text, target_language):
         target_lang_name = "English"
     
     try:
+        # Create a prompt that preserves numbers
+        prompt = f"""Translate this text to {target_lang_name}. 
+        IMPORTANT: Preserve all numbers, measurements, units, and special codes exactly as they are.
+        Do not translate numbers, dates in format YYYY-MM-DD, contract numbers, or technical codes.
+        
+        Text to translate: {text}
+        
+        Translation:"""
+        
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
                 "role": "user",
-                "content": f"Translate this to {target_lang_name}. Return ONLY the translation:\n\n{text}"
+                "content": prompt
             }],
             max_tokens=500,
             temperature=0.1
         )
+        
         translated = response.choices[0].message.content.strip()
-        st.session_state.translation_cache[cache_key] = translated
-        return translated
+        
+        # Try to insert numbers back if they were removed
+        translated_with_numbers = insert_numbers_back(translated, original_numbers)
+        
+        # Cache the result
+        st.session_state.translation_cache[cache_key] = translated_with_numbers
+        return translated_with_numbers
+        
     except Exception as e:
-        # If OpenAI fails, return original text
+        st.error(f"Translation error: {str(e)}")
+        # Return original text if translation fails
         return text
 
 def get_display_value(field_key):
     """Get value for display based on current UI language"""
-    english_value = st.session_state.get(field_key, '')
+    # Get the stored English value
+    english_value = st.session_state.english_values.get(field_key, '')
     if not english_value:
         return ''
     
+    # If UI is in English, show English value
     if st.session_state.ui_language == "en":
         return english_value
     else:
@@ -466,16 +533,50 @@ def get_display_value(field_key):
 def update_english_value(field_key, displayed_value):
     """Update the English value based on user input"""
     if not displayed_value or displayed_value.strip() == "":
-        st.session_state[field_key] = ''
+        st.session_state.english_values[field_key] = ''
         return
     
     if st.session_state.ui_language == "en":
         # User entered text in English, store directly
-        st.session_state[field_key] = displayed_value.strip()
+        st.session_state.english_values[field_key] = displayed_value.strip()
     else:
-        # User entered text in Mandarin, translate to English for storage
-        english_text = translate_text_with_openai(displayed_value.strip(), "en")
-        st.session_state[field_key] = english_text
+        # User entered text in Mandarin UI, but we need to translate it to English for storage
+        # However, the user might be typing in English even when UI is Mandarin
+        # So we need to detect if it's already English
+        
+        # Simple check: if text contains Chinese characters, translate to English
+        # If it's already English, store directly
+        if contains_chinese(displayed_value):
+            # Translate to English for storage
+            english_text = translate_text_with_openai(displayed_value.strip(), "en")
+            st.session_state.english_values[field_key] = english_text
+        else:
+            # Already in English, store directly
+            st.session_state.english_values[field_key] = displayed_value.strip()
+
+def contains_chinese(text):
+    """Check if text contains Chinese characters"""
+    if not text:
+        return False
+    # Check for Chinese Unicode characters
+    for char in text:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+    return False
+
+def get_pdf_display_value(field_key, pdf_language):
+    """Get value for PDF generation based on PDF language"""
+    # Get the stored English value
+    english_value = st.session_state.english_values.get(field_key, '')
+    if not english_value:
+        return ''
+    
+    # If PDF is in English, show English value
+    if pdf_language == "en":
+        return english_value
+    else:
+        # Translate to Mandarin for PDF
+        return translate_text_with_openai(english_value, "zh")
 
 # ENHANCED PDF Generation with proper Chinese support
 class DieCutPDF(SimpleDocTemplate):
@@ -898,25 +999,15 @@ def generate_pdf():
     basic_info_title = create_paragraph(get_pdf_text("basic_info", pdf_lang), section_header_style, bold=True)
     elements.append(basic_info_title)
     
-    # Get values - ensure they are not None
-    contract_no_val = st.session_state.get('contract_no', '') or ''
-    brand_val = st.session_state.get('brand', '') or ''
-    agent_factory_val = st.session_state.get('agent_factory', '') or ''
-    style_name_val = st.session_state.get('style_name', '') or ''
-    qty_val = st.session_state.get('qty', '') or ''
-    sales_val = st.session_state.get('sales', '') or ''
-    factory_style_val = st.session_state.get('factory_style', '') or ''
+    # Get values using PDF display function
+    contract_no_val = get_pdf_display_value('contract_no', pdf_lang)
+    brand_val = get_pdf_display_value('brand', pdf_lang)
+    agent_factory_val = get_pdf_display_value('agent_factory', pdf_lang)
+    style_name_val = get_pdf_display_value('style_name', pdf_lang)
+    qty_val = get_pdf_display_value('qty', pdf_lang)
+    sales_val = get_pdf_display_value('sales', pdf_lang)
+    factory_style_val = get_pdf_display_value('factory_style', pdf_lang)
     ship_date_val = st.session_state.get('ship_date', current_time)
-    
-    # For PDF, get English values and translate if needed
-    if pdf_lang == "zh":
-        contract_no_val = translate_text_with_openai(contract_no_val, "zh")
-        brand_val = translate_text_with_openai(brand_val, "zh")
-        agent_factory_val = translate_text_with_openai(agent_factory_val, "zh")
-        style_name_val = translate_text_with_openai(style_name_val, "zh")
-        qty_val = translate_text_with_openai(qty_val, "zh")
-        sales_val = translate_text_with_openai(sales_val, "zh")
-        factory_style_val = translate_text_with_openai(factory_style_val, "zh")
     
     # Create a cleaner table layout with pure language
     basic_data = []
@@ -987,15 +1078,9 @@ def generate_pdf():
     
     # ========== QUANTITY INFORMATION ==========
     
-    size_val = st.session_state.get('size', '') or ''
-    die_qty_val = st.session_state.get('die_qty', '') or ''
-    batch_qty_val = st.session_state.get('batch_qty', '') or ''
-    
-    # Translate for Chinese PDF
-    if pdf_lang == "zh":
-        size_val = translate_text_with_openai(size_val, "zh")
-        die_qty_val = translate_text_with_openai(die_qty_val, "zh")
-        batch_qty_val = translate_text_with_openai(batch_qty_val, "zh")
+    size_val = get_pdf_display_value('size', pdf_lang)
+    die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
+    batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
     
     size_label = get_pdf_text("size", pdf_lang)
     die_qty_label = get_pdf_text("die_qty", pdf_lang)
@@ -1055,11 +1140,7 @@ def generate_pdf():
     for item, yes_key, no_key, comment_key in check_items:
         yes_check = "✓" if st.session_state.get(yes_key, False) else ""
         no_check = "✓" if st.session_state.get(no_key, False) else ""
-        comment = st.session_state.get(comment_key, '') or ''
-        
-        # Translate comment for Chinese PDF
-        if pdf_lang == "zh" and comment and comment != "-":
-            comment = translate_text_with_openai(comment, "zh")
+        comment = get_pdf_display_value(comment_key, pdf_lang)
         
         row = [
             create_paragraph(item, table_cell_style),
@@ -1097,11 +1178,7 @@ def generate_pdf():
     
     # Tech specs comparison with better styling
     same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
-    tech_specs_comments_val = st.session_state.get('tech_specs_comments', '') or ''
-    
-    # Translate for Chinese PDF
-    if pdf_lang == "zh" and tech_specs_comments_val and tech_specs_comments_val != "-":
-        tech_specs_comments_val = translate_text_with_openai(tech_specs_comments_val, "zh")
+    tech_specs_comments_val = get_pdf_display_value('tech_specs_comments', pdf_lang)
     
     same_label = get_pdf_text("same", pdf_lang)
     if_not_label = get_pdf_text("if_not_same", pdf_lang)
@@ -1144,11 +1221,7 @@ def generate_pdf():
     
     tech_comments_yes = "✓" if st.session_state.get('tech_comments_yes', False) else ""
     tech_comments_no = "✓" if st.session_state.get('tech_comments_no', False) else ""
-    tech_comments_desc = st.session_state.get('tech_comments_description', '') or ''
-    
-    # Translate for Chinese PDF
-    if pdf_lang == "zh" and tech_comments_desc and tech_comments_desc != "-":
-        tech_comments_desc = translate_text_with_openai(tech_comments_desc, "zh")
+    tech_comments_desc = get_pdf_display_value('tech_comments_description', pdf_lang)
     
     yes_label = get_pdf_text("yes", pdf_lang)
     no_label = get_pdf_text("no", pdf_lang)
@@ -1231,11 +1304,7 @@ def generate_pdf():
         ]
     
     for item, result_key, pass_key, fail_key, standard in test_items:
-        result = st.session_state.get(result_key, '') or ''
-        
-        # Translate result for Chinese PDF
-        if pdf_lang == "zh" and result and result != "-":
-            result = translate_text_with_openai(result, "zh")
+        result = get_pdf_display_value(result_key, pdf_lang)
         
         pass_check = st.session_state.get(pass_key, False)
         fail_check = st.session_state.get(fail_key, False)
@@ -1282,16 +1351,11 @@ def generate_pdf():
     elements.append(issues_title)
     
     # Two-column layout for issues
-    die_cut_issues = st.session_state.get('die_cut_issues', '') or ''
-    batch_test_issues = st.session_state.get('batch_test_issues', '') or ''
+    die_cut_issues = get_pdf_display_value('die_cut_issues', pdf_lang)
+    batch_test_issues = get_pdf_display_value('batch_test_issues', pdf_lang)
     
-    # Translate for Chinese PDF
     if pdf_lang == "zh":
         no_issues_text = "无问题报告"
-        if die_cut_issues:
-            die_cut_issues = translate_text_with_openai(die_cut_issues, "zh")
-        if batch_test_issues:
-            batch_test_issues = translate_text_with_openai(batch_test_issues, "zh")
     else:
         no_issues_text = "No issues reported"
     
@@ -1392,11 +1456,7 @@ def generate_pdf():
     
     # Signature rows
     for label, key, date_label in signatures:
-        value = st.session_state.get(key, '') or ''
-        
-        # Translate for Chinese PDF
-        if pdf_lang == "zh" and value:
-            value = translate_text_with_openai(value, "zh")
+        value = get_pdf_display_value(key, pdf_lang)
         
         sig_row = [
             create_paragraph(label, table_cell_bold_style, bold=True),
@@ -2124,7 +2184,7 @@ st.markdown("---")
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if st.button(f"{ICONS['generate']} {get_text('generate_pdf')}", use_container_width=True):
-        if not st.session_state.get('contract_no') or not st.session_state.get('style_name'):
+        if not st.session_state.english_values.get('contract_no') or not st.session_state.english_values.get('style_name'):
             st.error(f"{ICONS['error']} {get_text('fill_required')}")
         else:
             with st.spinner(f"{ICONS['time']} {get_text('creating_pdf')}"):
@@ -2144,7 +2204,7 @@ with col2:
                             st.metric(get_text("generated"), current_time.strftime('%H:%M:%S'))
                     
                     # Download button
-                    filename = f"DieCut_Test_{st.session_state.get('contract_no', '')}_{selected_city}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    filename = f"DieCut_Test_{st.session_state.english_values.get('contract_no', '')}_{selected_city}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                     st.download_button(
                         label=f"{ICONS['download']} {get_text('download_pdf')}",
                         data=pdf_buffer,
