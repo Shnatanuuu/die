@@ -436,6 +436,27 @@ def get_pdf_text(key, pdf_language):
     else:
         return ENGLISH_TEXTS.get(key, key)
 
+def safe_int_convert(value, default=0):
+    """Safely convert value to integer, handling None and empty strings"""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        value = value.strip()
+        if value == "":
+            return default
+        try:
+            # Try to extract numbers from string
+            numbers = re.findall(r'\d+', value)
+            if numbers:
+                return int(numbers[0])
+            return default
+        except (ValueError, TypeError):
+            return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
 def extract_and_preserve_numbers(text):
     """Extract numbers and their positions from text"""
     if not text:
@@ -750,26 +771,17 @@ class DieCutPDF(SimpleDocTemplate):
         
         canvas.restoreState()
 
-def safe_int_convert(value, default=0):
-    """Safely convert value to integer, handling None and empty strings"""
-    if value is None:
-        return default
-    if isinstance(value, str):
-        value = value.strip()
-        if value == "":
-            return default
-        try:
-            # Try to extract numbers from string
-            numbers = re.findall(r'\d+', value)
-            if numbers:
-                return int(numbers[0])
-            return default
-        except (ValueError, TypeError):
-            return default
+def safe_date_format(date_val, format_str):
+    """Safely format a date, handling None values"""
+    if date_val is None:
+        return ""
     try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
+        if hasattr(date_val, 'strftime'):
+            return date_val.strftime(format_str)
+        else:
+            return str(date_val)
+    except Exception:
+        return str(date_val)
 
 def generate_pdf():
     """Generate Die Cut Test PDF report with enhanced design"""
@@ -1034,8 +1046,8 @@ def generate_pdf():
     # Create test date header with pure language
     if pdf_lang == "zh":
         # Format dates in Chinese style
-        die_cut_date_str = die_cut_date.strftime('%Y年%m月%d日') if hasattr(die_cut_date, 'strftime') else str(die_cut_date)
-        batch_test_date_str = batch_test_date.strftime('%Y年%m月%d日') if hasattr(batch_test_date, 'strftime') else str(batch_test_date)
+        die_cut_date_str = safe_date_format(die_cut_date, '%Y年%m月%d日')
+        batch_test_date_str = safe_date_format(batch_test_date, '%Y年%m月%d日')
         
         test_header_data = [
             [
@@ -1050,8 +1062,8 @@ def generate_pdf():
         ]
     else:
         # Format dates in English style
-        die_cut_date_str = die_cut_date.strftime('%Y-%m-%d') if hasattr(die_cut_date, 'strftime') else str(die_cut_date)
-        batch_test_date_str = batch_test_date.strftime('%Y-%m-%d') if hasattr(batch_test_date, 'strftime') else str(batch_test_date)
+        die_cut_date_str = safe_date_format(die_cut_date, '%Y-%m-%d')
+        batch_test_date_str = safe_date_format(batch_test_date, '%Y-%m-%d')
         
         test_header_data = [
             [
@@ -1139,9 +1151,9 @@ def generate_pdf():
     ship_label = get_pdf_text("ship_date", pdf_lang)
     
     if pdf_lang == "zh":
-        ship_date_formatted = ship_date_val.strftime('%Y年%m月%d日') if hasattr(ship_date_val, 'strftime') else str(ship_date_val)
+        ship_date_formatted = safe_date_format(ship_date_val, '%Y年%m月%d日')
     else:
-        ship_date_formatted = ship_date_val.strftime('%Y-%m-%d') if hasattr(ship_date_val, 'strftime') else str(ship_date_val)
+        ship_date_formatted = safe_date_format(ship_date_val, '%Y-%m-%d')
     
     basic_data.append([
         create_paragraph(f"{factory_label}", table_cell_bold_style, bold=True),
@@ -1592,9 +1604,9 @@ def generate_pdf():
     
     # Format date based on language
     if pdf_lang == "zh":
-        date_formatted = signature_date_val.strftime('%Y年%m月%d日') if hasattr(signature_date_val, 'strftime') else str(signature_date_val)
+        date_formatted = safe_date_format(signature_date_val, '%Y年%m月%d日')
     else:
-        date_formatted = signature_date_val.strftime('%Y-%m-%d') if hasattr(signature_date_val, 'strftime') else str(signature_date_val)
+        date_formatted = safe_date_format(signature_date_val, '%Y-%m-%d')
     
     # Create signature data
     sig_data = []
