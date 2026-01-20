@@ -477,48 +477,48 @@ class DieCutPDF(SimpleDocTemplate):
         canvas.restoreState()
 
 def get_column_widths(pdf_lang):
-    """Get appropriate column widths based on language"""
+    """Get appropriate column widths based on language - FIXED VERSION"""
     if pdf_lang == "zh":
         # Chinese text needs wider columns for readability
         return {
-            'basic_col1': 1.0*inch,   # 2.54cm
-            'basic_col2': 1.5*inch,   # 3.81cm
-            'basic_col3': 1.0*inch,   # 2.54cm
-            'basic_col4': 1.3*inch,   # 3.3cm
-            'basic_col5': 1.0*inch,   # 2.54cm
-            'basic_col6': 1.5*inch,   # 3.81cm
-            'check_col1': 2.5*inch,   # 6.35cm - Check items
-            'check_col2': 0.5*inch,   # 1.27cm - Yes
-            'check_col3': 0.5*inch,   # 1.27cm - No
-            'check_col4': 2.0*inch,   # 5.08cm - Comments
-            'test_col1': 2.0*inch,    # 5.08cm - Test items
-            'test_col2': 1.0*inch,    # 2.54cm - Result
-            'test_col3': 2.0*inch,    # 5.08cm - Standard
-            'test_col4': 1.0*inch,    # 2.54cm - Pass/Fail
-            'signature_col1': 2.2*inch,  # 5.59cm - Role
-            'signature_col2': 2.5*inch,  # 6.35cm - Name/Signature
-            'signature_col3': 1.3*inch,  # 3.3cm - Date
+            'basic_col1': 1.0,   # in inches
+            'basic_col2': 1.5,   # in inches
+            'basic_col3': 1.0,   # in inches
+            'basic_col4': 1.3,   # in inches
+            'basic_col5': 1.0,   # in inches
+            'basic_col6': 1.5,   # in inches
+            'check_col1': 2.5,   # in inches
+            'check_col2': 0.5,   # in inches
+            'check_col3': 0.5,   # in inches
+            'check_col4': 2.0,   # in inches
+            'test_col1': 2.0,    # in inches
+            'test_col2': 1.0,    # in inches
+            'test_col3': 2.0,    # in inches
+            'test_col4': 1.0,    # in inches
+            'signature_col1': 2.2,  # in inches
+            'signature_col2': 2.5,  # in inches
+            'signature_col3': 1.3,  # in inches
         }
     else:
         # English text can use narrower columns
         return {
-            'basic_col1': 0.9*inch,   # 2.29cm
-            'basic_col2': 1.4*inch,   # 3.56cm
-            'basic_col3': 0.8*inch,   # 2.03cm
-            'basic_col4': 1.2*inch,   # 3.05cm
-            'basic_col5': 0.9*inch,   # 2.29cm
-            'basic_col6': 1.4*inch,   # 3.56cm
-            'check_col1': 2.2*inch,   # 5.59cm - Check items
-            'check_col2': 0.4*inch,   # 1.02cm - Yes
-            'check_col3': 0.4*inch,   # 1.02cm - No
-            'check_col4': 2.6*inch,   # 6.6cm - Comments
-            'test_col1': 1.8*inch,    # 4.57cm - Test items
-            'test_col2': 0.9*inch,    # 2.29cm - Result
-            'test_col3': 1.8*inch,    # 4.57cm - Standard
-            'test_col4': 0.9*inch,    # 2.29cm - Pass/Fail
-            'signature_col1': 2.0*inch,  # 5.08cm - Role
-            'signature_col2': 2.5*inch,  # 6.35cm - Name/Signature
-            'signature_col3': 1.5*inch,  # 3.81cm - Date
+            'basic_col1': 0.9,   # in inches
+            'basic_col2': 1.4,   # in inches
+            'basic_col3': 0.8,   # in inches
+            'basic_col4': 1.2,   # in inches
+            'basic_col5': 0.9,   # in inches
+            'basic_col6': 1.4,   # in inches
+            'check_col1': 2.2,   # in inches
+            'check_col2': 0.4,   # in inches
+            'check_col3': 0.4,   # in inches
+            'check_col4': 2.6,   # in inches
+            'test_col1': 1.8,    # in inches
+            'test_col2': 0.9,    # in inches
+            'test_col3': 1.8,    # in inches
+            'test_col4': 0.9,    # in inches
+            'signature_col1': 2.0,  # in inches
+            'signature_col2': 2.5,  # in inches
+            'signature_col3': 1.5,  # in inches
         }
 
 def generate_pdf():
@@ -862,13 +862,14 @@ def generate_pdf():
     ])
     
     basic_table = Table(basic_data, colWidths=[
-        col_widths['basic_col1'],
-        col_widths['basic_col2'],
-        col_widths['basic_col3'],
-        col_widths['basic_col4'],
-        col_widths['basic_col5'],
-        col_widths['basic_col6']
-    ])
+    col_widths['basic_col1'] * inch,  # ADD * inch here
+    col_widths['basic_col2'] * inch,  # ADD * inch here
+    col_widths['basic_col3'] * inch,  # ADD * inch here
+    col_widths['basic_col4'] * inch,  # ADD * inch here
+    col_widths['basic_col5'] * inch,  # ADD * inch here
+    col_widths['basic_col6'] * inch,  # ADD * inch here
+])
+
     basic_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -953,12 +954,12 @@ def generate_pdf():
         ]
         check_data.append(row)
     
-    check_table = Table(check_data, colWidths=[
-        col_widths['check_col1'],
-        col_widths['check_col2'],
-        col_widths['check_col3'],
-        col_widths['check_col4']
-    ])
+   check_table = Table(check_data, colWidths=[
+    col_widths['check_col1'] * inch,  # ADD * inch
+    col_widths['check_col2'] * inch,  # ADD * inch
+    col_widths['check_col3'] * inch,  # ADD * inch
+    col_widths['check_col4'] * inch,  # ADD * inch
+])
     check_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
@@ -1125,11 +1126,11 @@ def generate_pdf():
         test_data.append(row)
     
     test_table = Table(test_data, colWidths=[
-        col_widths['test_col1'],
-        col_widths['test_col2'],
-        col_widths['test_col3'],
-        col_widths['test_col4']
-    ])
+    col_widths['test_col1'] * inch,  # ADD * inch
+    col_widths['test_col2'] * inch,  # ADD * inch
+    col_widths['test_col3'] * inch,  # ADD * inch
+    col_widths['test_col4'] * inch,  # ADD * inch
+])
     test_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
@@ -1271,10 +1272,10 @@ def generate_pdf():
     
     # Create signature table with professional styling
     signatures_table = Table(sig_data, colWidths=[
-        col_widths['signature_col1'],
-        col_widths['signature_col2'],
-        col_widths['signature_col3']
-    ])
+    col_widths['signature_col1'] * inch,  # ADD * inch
+    col_widths['signature_col2'] * inch,  # ADD * inch
+    col_widths['signature_col3'] * inch,  # ADD * inch
+])
     signatures_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
