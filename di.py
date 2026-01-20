@@ -54,7 +54,7 @@ CHINESE_CITIES = {
     "Ningbo": "宁波",
     "Wenzhou": "温州",
     "Wuhan": "武汉",
-    "Chengdu": "成都",
+    "Chengdoo": "成都",
     "Chongqing": "重庆",
     "Tianjin": "天津",
     "Nanjing": "南京",
@@ -436,74 +436,17 @@ def get_pdf_text(key, pdf_language):
     else:
         return ENGLISH_TEXTS.get(key, key)
 
-# ULTRA-ROBUST NUMBER CONVERSION FUNCTION
-def safe_int_convert(value, default=0):
-    """Safely convert ANY value to integer - NO EXCEPTIONS"""
-    try:
-        # Handle None explicitly
-        if value is None:
-            return default
-        
-        # Handle empty string
-        if isinstance(value, str):
-            value = value.strip()
-            if value == "":
-                return default
-            # Remove commas and try conversion
-            value = value.replace(',', '')
-        
-        # Try direct conversion
-        return int(float(value))
-    except:
-        # If ANY error occurs, return default
-        return default
-
-def safe_float_convert(value, default=0.0):
-    """Safely convert value to float"""
-    try:
-        if value is None:
-            return default
-        if isinstance(value, str):
-            value = value.strip()
-            if value == "":
-                return default
-            value = value.replace(',', '')
-        return float(value)
-    except:
-        return default
-
-def extract_and_preserve_numbers(text):
-    """Extract numbers and their positions from text"""
-    if not text:
-        return []
-    
-    text_str = str(text) if text is not None else ""
-    if not text_str:
-        return []
-    
-    numbers = []
-    try:
-        for match in re.finditer(r'\d+\.?\d*', text_str):
-            numbers.append({
-                'start': match.start(),
-                'end': match.end(),
-                'value': match.group()
-            })
-    except:
-        pass
-    
-    return numbers
-
-def insert_numbers_back(translated_text, original_numbers):
-    """Insert preserved numbers back into translated text"""
-    if not translated_text or not original_numbers:
-        return translated_text
-    
-    translated_str = str(translated_text) if translated_text is not None else ""
-    return translated_str
+# SIMPLIFIED NUMBER HANDLING - NO CONVERSIONS, JUST DISPLAY
+def get_display_text(value):
+    """Convert any value to display text"""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value.strip()
+    return str(value)
 
 def translate_text_with_openai(text, target_language):
-    """Translate text using OpenAI with number preservation"""
+    """Translate text using OpenAI"""
     if text is None:
         return ""
     
@@ -615,7 +558,7 @@ def remove_size_row(index):
     if 0 <= index < len(st.session_state.size_data):
         st.session_state.size_data.pop(index)
 
-# ENHANCED PDF Generation with proper Chinese support
+# SIMPLIFIED PDF Generation - NO NUMBER CALCULATIONS
 class DieCutPDF(SimpleDocTemplate):
     def __init__(self, *args, **kwargs):
         self.pdf_language = kwargs.pop('pdf_language', 'en')
@@ -725,7 +668,7 @@ def safe_date_format(date_val, format_str):
         return str(date_val)
 
 def generate_pdf():
-    """Generate Die Cut Test PDF report with enhanced design"""
+    """Generate Die Cut Test PDF report - SIMPLIFIED VERSION"""
     buffer = io.BytesIO()
     
     selected_city = st.session_state.selected_city
@@ -747,7 +690,7 @@ def generate_pdf():
     elements = []
     styles = getSampleStyleSheet()
     
-    # ========== DEFINE ENHANCED STYLES ==========
+    # ========== DEFINE STYLES ==========
     
     primary_color = colors.HexColor('#667eea')
     secondary_color = colors.HexColor('#764ba2')
@@ -762,9 +705,6 @@ def generate_pdf():
         spaceAfter=8,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold',
-        underlineWidth=1,
-        underlineColor=secondary_color,
-        underlineOffset=-0.1*inch,
         spaceBefore=5
     )
     
@@ -857,60 +797,6 @@ def generate_pdf():
         textColor=colors.HexColor('#555555')
     )
     
-    small_bold_style = ParagraphStyle(
-        'SmallBoldStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=9,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#333333')
-    )
-    
-    signature_style = ParagraphStyle(
-        'Signature',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=dark_bg,
-        fontName='Helvetica-Bold',
-        leading=12
-    )
-    
-    disclaimer_style = ParagraphStyle(
-        'Disclaimer',
-        parent=styles['Normal'],
-        fontSize=7,
-        textColor=colors.red,
-        fontName='Helvetica-Oblique',
-        leading=8,
-        borderWidth=1,
-        borderColor=colors.HexColor('#fed7d7'),
-        borderPadding=2,
-        backColor=colors.HexColor('#fff5f5')
-    )
-    
-    if pdf_lang == "zh":
-        pass_text = "通过"
-        fail_text = "失败"
-        pending_text = "待定"
-    else:
-        pass_text = "PASS"
-        fail_text = "FAIL"
-        pending_text = "PENDING"
-    
-    pass_style = ParagraphStyle(
-        'Pass',
-        parent=small_style,
-        textColor=success_color,
-        fontName='Helvetica-Bold'
-    )
-    
-    fail_style = ParagraphStyle(
-        'Fail',
-        parent=small_style,
-        textColor=colors.red,
-        fontName='Helvetica-Bold'
-    )
-    
     def create_paragraph(text, style, bold=False, color=None):
         """Create paragraph with appropriate styling"""
         if text is None:
@@ -942,9 +828,6 @@ def generate_pdf():
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
     
-    die_cut_date = st.session_state.get('die_cut_date', current_time)
-    batch_test_date = st.session_state.get('batch_test_date', current_time)
-    
     if pdf_lang == "zh":
         subtitle_text = f"报告生成: {current_time.strftime('%Y年%m月%d日 %H时%M分')} | 测试地点: {chinese_city}"
     else:
@@ -953,55 +836,6 @@ def generate_pdf():
     elements.append(create_paragraph(subtitle_text, subtitle_style))
     elements.append(Spacer(1, 8))
     elements.append(Spacer(1, 12))
-    
-    # ========== TEST DATES HEADER ==========
-    
-    die_cut_text = get_pdf_text("die_cut_test", pdf_lang)
-    batches_text = get_pdf_text("batch_test", pdf_lang)
-    
-    if pdf_lang == "zh":
-        die_cut_date_str = safe_date_format(die_cut_date, '%Y年%m月%d日')
-        batch_test_date_str = safe_date_format(batch_test_date, '%Y年%m月%d日')
-        
-        test_header_data = [
-            [
-                create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
-                create_paragraph(":", small_bold_style),
-                create_paragraph(die_cut_date_str, small_bold_style),
-                create_paragraph("", small_style),
-                create_paragraph(batches_text, table_cell_bold_style, bold=True),
-                create_paragraph(":", small_bold_style),
-                create_paragraph(batch_test_date_str, small_bold_style)
-            ]
-        ]
-    else:
-        die_cut_date_str = safe_date_format(die_cut_date, '%Y-%m-%d')
-        batch_test_date_str = safe_date_format(batch_test_date, '%Y-%m-%d')
-        
-        test_header_data = [
-            [
-                create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
-                create_paragraph(":", small_bold_style),
-                create_paragraph(die_cut_date_str, small_bold_style),
-                create_paragraph("", small_style),
-                create_paragraph(batches_text, table_cell_bold_style, bold=True),
-                create_paragraph(":", small_bold_style),
-                create_paragraph(batch_test_date_str, small_bold_style)
-            ]
-        ]
-    
-    test_header_table = Table(test_header_data, colWidths=[1.2*inch, 0.1*inch, 1.0*inch, 0.2*inch, 1.2*inch, 0.1*inch, 1.0*inch])
-    test_header_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('LINEABOVE', (0, 0), (-1, -1), 0.5, primary_color),
-        ('LINEBELOW', (0, 0), (-1, -1), 0.5, primary_color),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
-        ('PADDING', (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(test_header_table)
-    elements.append(Spacer(1, 15))
     
     # ========== BASIC INFORMATION ==========
     
@@ -1017,13 +851,13 @@ def generate_pdf():
     factory_style_val = get_pdf_display_value('factory_style', pdf_lang)
     ship_date_val = st.session_state.get('ship_date', current_time)
     
-    contract_no_val = str(contract_no_val) if contract_no_val is not None else ''
-    brand_val = str(brand_val) if brand_val is not None else ''
-    agent_factory_val = str(agent_factory_val) if agent_factory_val is not None else ''
-    style_name_val = str(style_name_val) if style_name_val is not None else ''
-    qty_val = str(qty_val) if qty_val is not None else ''
-    sales_val = str(sales_val) if sales_val is not None else ''
-    factory_style_val = str(factory_style_val) if factory_style_val is not None else ''
+    contract_no_val = get_display_text(contract_no_val)
+    brand_val = get_display_text(brand_val)
+    agent_factory_val = get_display_text(agent_factory_val)
+    style_name_val = get_display_text(style_name_val)
+    qty_val = get_display_text(qty_val)
+    sales_val = get_display_text(sales_val)
+    factory_style_val = get_display_text(factory_style_val)
     
     basic_data = []
     
@@ -1086,7 +920,7 @@ def generate_pdf():
     elements.append(Spacer(1, 12))
     
     # ========== SIZE & QUANTITY TABLE ==========
-    # FIXED VERSION - NO MORE ERRORS
+    # SIMPLIFIED - NO CALCULATIONS, JUST DISPLAY
     
     size_data = st.session_state.size_data
     
@@ -1094,7 +928,6 @@ def generate_pdf():
         size_label = get_pdf_text("size", pdf_lang)
         die_qty_label = get_pdf_text("die_qty", pdf_lang)
         batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
-        total_label = get_pdf_text("total", pdf_lang)
         
         qty_data = [[
             create_paragraph(size_label, table_header_style, bold=True),
@@ -1102,64 +935,22 @@ def generate_pdf():
             create_paragraph(batch_qty_label, table_header_style, bold=True)
         ]]
         
-        # Initialize totals
-        total_die_qty = 0
-        total_batch_qty = 0
-        
-        for i, item in enumerate(size_data):
-            # Get values with explicit defaults
+        for item in size_data:
+            # Get display values - NO CONVERSIONS
             size_val = item.get('size', '')
             die_qty_val = item.get('die_qty', '')
             batch_qty_val = item.get('batch_qty', '')
             
-            # Convert to string safely
-            if size_val is None:
-                size_display = '-'
-            else:
-                size_display = str(size_val).strip()
-                if size_display == '':
-                    size_display = '-'
-            
-            if die_qty_val is None:
-                die_qty_display = '-'
-                die_qty_int = 0
-            else:
-                die_qty_display = str(die_qty_val).strip()
-                if die_qty_display == '':
-                    die_qty_display = '-'
-                    die_qty_int = 0
-                else:
-                    # Use ultra-safe conversion
-                    die_qty_int = safe_int_convert(die_qty_val, 0)
-            
-            if batch_qty_val is None:
-                batch_qty_display = '-'
-                batch_qty_int = 0
-            else:
-                batch_qty_display = str(batch_qty_val).strip()
-                if batch_qty_display == '':
-                    batch_qty_display = '-'
-                    batch_qty_int = 0
-                else:
-                    # Use ultra-safe conversion
-                    batch_qty_int = safe_int_convert(batch_qty_val, 0)
-            
-            # Add to totals
-            total_die_qty += die_qty_int
-            total_batch_qty += batch_qty_int
+            # Clean for display
+            size_display = get_display_text(size_val) or '-'
+            die_qty_display = get_display_text(die_qty_val) or '-'
+            batch_qty_display = get_display_text(batch_qty_val) or '-'
             
             qty_data.append([
                 create_paragraph(size_display, table_cell_center_style),
                 create_paragraph(die_qty_display, table_cell_center_style),
                 create_paragraph(batch_qty_display, table_cell_center_style)
             ])
-        
-        # Add total row - using str() to ensure no None values
-        qty_data.append([
-            create_paragraph(f"<b>{total_label}</b>", table_cell_bold_style, bold=True),
-            create_paragraph(str(total_die_qty) if total_die_qty > 0 else '-', table_cell_bold_style, bold=True),
-            create_paragraph(str(total_batch_qty) if total_batch_qty > 0 else '-', table_cell_bold_style, bold=True)
-        ])
         
         qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
         qty_table.setStyle(TableStyle([
@@ -1170,12 +961,10 @@ def generate_pdf():
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('PADDING', (0, 0), (-1, -1), 6),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f4ff')),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ]))
         elements.append(qty_table)
     else:
-        # Fallback to simple display if no size data
+        # Fallback to simple display
         size_label = get_pdf_text("size", pdf_lang)
         die_qty_label = get_pdf_text("die_qty", pdf_lang)
         batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
@@ -1184,9 +973,9 @@ def generate_pdf():
         die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
         batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
         
-        size_val = str(size_val) if size_val is not None else '-'
-        die_qty_val = str(die_qty_val) if die_qty_val is not None else '-'
-        batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else '-'
+        size_display = get_display_text(size_val) or '-'
+        die_qty_display = get_display_text(die_qty_val) or '-'
+        batch_qty_display = get_display_text(batch_qty_val) or '-'
         
         qty_data = [
             [
@@ -1195,9 +984,9 @@ def generate_pdf():
                 create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
             ],
             [
-                create_paragraph(size_val, table_cell_center_style),
-                create_paragraph(die_qty_val, table_cell_center_style),
-                create_paragraph(batch_qty_val, table_cell_center_style)
+                create_paragraph(size_display, table_cell_center_style),
+                create_paragraph(die_qty_display, table_cell_center_style),
+                create_paragraph(batch_qty_display, table_cell_center_style)
             ]
         ]
         
@@ -1242,7 +1031,7 @@ def generate_pdf():
         yes_check = "✓" if st.session_state.get(yes_key, False) else ""
         no_check = "✓" if st.session_state.get(no_key, False) else ""
         comment = get_pdf_display_value(comment_key, pdf_lang)
-        comment = str(comment) if comment is not None else ''
+        comment = get_display_text(comment)
         
         row = [
             create_paragraph(item, table_cell_style),
@@ -1277,7 +1066,7 @@ def generate_pdf():
     
     same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
     tech_specs_comments_val = get_pdf_display_value('tech_specs_comments', pdf_lang)
-    tech_specs_comments_val = str(tech_specs_comments_val) if tech_specs_comments_val is not None else ''
+    tech_specs_comments_val = get_display_text(tech_specs_comments_val)
     
     same_label = get_pdf_text("same", pdf_lang)
     if_not_label = get_pdf_text("if_not_same", pdf_lang)
@@ -1307,55 +1096,6 @@ def generate_pdf():
     elements.append(tech_table)
     elements.append(Spacer(1, 15))
     
-    # ========== TECH COMMENTS ==========
-    
-    tech_comments_title = create_paragraph(get_pdf_text("tech_comments_completed", pdf_lang), 
-                                          ParagraphStyle(
-                                              'TechComments',
-                                              parent=section_header_style,
-                                              fontSize=10,
-                                              spaceAfter=6
-                                          ), bold=True)
-    elements.append(tech_comments_title)
-    
-    tech_comments_yes = "✓" if st.session_state.get('tech_comments_yes', False) else ""
-    tech_comments_no = "✓" if st.session_state.get('tech_comments_no', False) else ""
-    tech_comments_desc = get_pdf_display_value('tech_comments_description', pdf_lang)
-    tech_comments_desc = str(tech_comments_desc) if tech_comments_desc is not None else ''
-    
-    yes_label = get_pdf_text("yes", pdf_lang)
-    no_label = get_pdf_text("no", pdf_lang)
-    
-    comments_data = [
-        [
-            create_paragraph(yes_label, table_cell_bold_style, bold=True),
-            create_paragraph(tech_comments_yes, table_cell_center_style),
-            create_paragraph(no_label, table_cell_bold_style, bold=True),
-            create_paragraph(tech_comments_no, table_cell_center_style),
-            create_paragraph(get_pdf_text("if_not_same", pdf_lang), table_cell_bold_style, bold=True)
-        ],
-        [
-            create_paragraph("", table_cell_style),
-            create_paragraph("", table_cell_style),
-            create_paragraph("", table_cell_style),
-            create_paragraph("", table_cell_style),
-            create_paragraph(tech_comments_desc if tech_comments_desc else "-", table_cell_style)
-        ]
-    ]
-    
-    comments_table = Table(comments_data, colWidths=[0.6*inch, 0.3*inch, 0.6*inch, 0.3*inch, 4.0*inch])
-    comments_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (4, 0), colors.HexColor('#f0f4ff')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (3, 0), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('PADDING', (0, 0), (-1, -1), 4),
-        ('SPAN', (4, 0), (4, -1)),
-    ]))
-    elements.append(comments_table)
-    elements.append(Spacer(1, 15))
-    
     # ========== TEST RESULTS ==========
     
     test_results_title = create_paragraph(get_pdf_text("test_results", pdf_lang), section_header_style, bold=True)
@@ -1365,7 +1105,7 @@ def generate_pdf():
         create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
         create_paragraph(get_pdf_text("result", pdf_lang), table_header_style, bold=True),
         create_paragraph(get_pdf_text("client_standard", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("pass_fail", pdf_lang), table_header_style, bold=True)
+        create_paragraph("PASS/FAIL", table_header_style, bold=True)
     ]
     
     test_data = [test_header]
@@ -1403,23 +1143,34 @@ def generate_pdf():
     
     for item, result_key, pass_key, fail_key, standard in test_items:
         result = get_pdf_display_value(result_key, pdf_lang)
-        result = str(result) if result is not None else ''
+        result = get_display_text(result)
         
         pass_check = st.session_state.get(pass_key, False)
         fail_check = st.session_state.get(fail_key, False)
         
         if pass_check:
-            status = create_paragraph(pass_text, pass_style)
+            status = "PASS"
+            status_color = success_color
         elif fail_check:
-            status = create_paragraph(fail_text, fail_style)
+            status = "FAIL"
+            status_color = colors.red
         else:
-            status = create_paragraph(pending_text, small_style)
+            status = "-"
+            status_color = colors.HexColor('#666666')
+        
+        status_style = ParagraphStyle(
+            'StatusStyle',
+            parent=small_style,
+            textColor=status_color,
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER
+        )
         
         row = [
             create_paragraph(item, table_cell_style),
             create_paragraph(result if result else "-", table_cell_center_style),
             create_paragraph(standard, small_style),
-            status
+            create_paragraph(status, status_style)
         ]
         test_data.append(row)
     
@@ -1440,76 +1191,6 @@ def generate_pdf():
     ]))
     elements.append(test_table)
     elements.append(Spacer(1, 15))
-    
-    # ========== ISSUES & SOLUTIONS ==========
-    
-    issues_title = create_paragraph(get_pdf_text("issues_solutions", pdf_lang), section_header_style, bold=True)
-    elements.append(issues_title)
-    
-    die_cut_issues = get_pdf_display_value('die_cut_issues', pdf_lang)
-    batch_test_issues = get_pdf_display_value('batch_test_issues', pdf_lang)
-    
-    die_cut_issues = str(die_cut_issues) if die_cut_issues is not None else ''
-    batch_test_issues = str(batch_test_issues) if batch_test_issues is not None else ''
-    
-    if pdf_lang == "zh":
-        no_issues_text = "无问题报告"
-    else:
-        no_issues_text = "No issues reported"
-    
-    issues_data = [
-        [
-            create_paragraph(get_pdf_text("die_cut_test", pdf_lang), 
-                           ParagraphStyle(
-                               'IssuesHeader',
-                               parent=table_cell_bold_style,
-                               fontSize=9,
-                               textColor=primary_color,
-                               alignment=TA_CENTER,
-                               backColor=colors.HexColor('#f0f4ff')
-                           ), bold=True),
-            create_paragraph(get_pdf_text("batch_test", pdf_lang), 
-                           ParagraphStyle(
-                               'IssuesHeader',
-                               parent=table_cell_bold_style,
-                               fontSize=9,
-                               textColor=secondary_color,
-                               alignment=TA_CENTER,
-                               backColor=colors.HexColor('#f5f0ff')
-                           ), bold=True)
-        ],
-        [
-            create_paragraph(die_cut_issues if die_cut_issues else no_issues_text, 
-                           ParagraphStyle(
-                               'IssuesContent',
-                               parent=table_cell_style,
-                               fontSize=8,
-                               borderWidth=1,
-                               borderColor=colors.HexColor('#e2e8f0'),
-                               borderPadding=6,
-                               backColor=colors.HexColor('#f8f9fa')
-                           )),
-            create_paragraph(batch_test_issues if batch_test_issues else no_issues_text, 
-                           ParagraphStyle(
-                               'IssuesContent',
-                               parent=table_cell_style,
-                               fontSize=8,
-                               borderWidth=1,
-                               borderColor=colors.HexColor('#e2e8f0'),
-                               borderPadding=6,
-                               backColor=colors.HexColor('#f8f9fa')
-                           ))
-        ]
-    ]
-    
-    issues_table = Table(issues_data, colWidths=[2.8*inch, 2.8*inch])
-    issues_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('PADDING', (0, 0), (-1, -1), 4),
-        ('LINEBELOW', (0, 0), (-1, 0), 1.5, colors.HexColor('#c3dafe')),
-    ]))
-    elements.append(issues_table)
-    elements.append(Spacer(1, 20))
     
     # ========== SIGNATURES ==========
     
@@ -1550,17 +1231,11 @@ def generate_pdf():
     
     for label, key, date_label in signatures:
         value = get_pdf_display_value(key, pdf_lang)
-        value = str(value) if value is not None else ''
+        value = get_display_text(value)
         
         sig_row = [
             create_paragraph(label, table_cell_bold_style, bold=True),
-            create_paragraph(value if value else "___________________", 
-                           ParagraphStyle(
-                               'SignatureLine',
-                               parent=table_cell_style,
-                               fontSize=10,
-                               textColor=dark_bg
-                           )),
+            create_paragraph(value if value else "___________________", table_cell_style),
             create_paragraph(date_formatted, table_cell_center_style)
         ]
         sig_data.append(sig_row)
@@ -1600,18 +1275,9 @@ def generate_pdf():
     elements.append(Spacer(1, 8))
     
     disclaimer_text = get_pdf_text("disclaimer_text", pdf_lang)
-    elements.append(create_paragraph(disclaimer_text, disclaimer_style))
+    elements.append(create_paragraph(disclaimer_text, small_style))
     
-    elements.append(create_paragraph("•" * 80, ParagraphStyle(
-        'EndLine',
-        parent=styles['Normal'],
-        fontSize=7,
-        textColor=primary_color,
-        alignment=TA_CENTER,
-        spaceBefore=8
-    )))
-    
-    # Build PDF with error handling
+    # Build PDF
     try:
         doc.build(elements)
     except Exception as e:
@@ -2150,39 +1816,6 @@ with tab3:
             toe_post_pass = st.checkbox("PASS", key="toe_post_pass")
         with col_fail:
             toe_post_fail = st.checkbox("FAIL", key="toe_post_fail")
-    
-    st.markdown(f"""
-    <div class="section-header">
-        <span class="section-header-icon">{ICONS["issues_solutions"]}</span>
-        {get_text("issues_solutions")}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"**{get_text('die_cut_test')}**")
-        die_cut_issues_display = get_display_value('die_cut_issues')
-        die_cut_issues_input = st.text_area(
-            f"{get_text('main_issues')}",
-            value=die_cut_issues_display,
-            placeholder=f"{get_text('main_issues')}...",
-            height=150,
-            key="die_cut_issues_input"
-        )
-        if die_cut_issues_input != die_cut_issues_display:
-            update_english_value('die_cut_issues', die_cut_issues_input)
-    with col2:
-        st.markdown(f"**{get_text('batch_test')}**")
-        batch_test_issues_display = get_display_value('batch_test_issues')
-        batch_test_issues_input = st.text_area(
-            f"{get_text('main_issues')}",
-            value=batch_test_issues_display,
-            placeholder=f"{get_text('main_issues')}...",
-            height=150,
-            key="batch_test_issues_input"
-        )
-        if batch_test_issues_input != batch_test_issues_display:
-            update_english_value('batch_test_issues', batch_test_issues_input)
 
 with tab4:
     st.markdown(f"""
