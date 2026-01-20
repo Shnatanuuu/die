@@ -15,6 +15,7 @@ import pytz
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -37,7 +38,7 @@ st.set_page_config(
 
 # Chinese cities dictionary
 CHINESE_CITIES = {
-    "Guangzhou": "广东",
+    "Guangzhou": "广州",
     "Shenzhen": "深圳",
     "Dongguan": "东莞",
     "Foshan": "佛山",
@@ -286,7 +287,6 @@ ENGLISH_TEXTS = {
     "disclaimer_text": "Note: This review information does not release the factory from any responsibilities in the event of claims being received from our customer.",
 }
 
-
 MANDARIN_TEXTS = {
     "title": "斩刀试做报告系统",
     "basic_info": "基本信息",
@@ -382,9 +382,7 @@ def get_pdf_text(key, pdf_language):
     else:
         return ENGLISH_TEXTS.get(key, key)
 
-# ENHANCED PDF Generation with pure language support
-# Replace the DieCutPDF class with this corrected version:
-
+# ENHANCED PDF Generation with proper Chinese support
 class DieCutPDF(SimpleDocTemplate):
     def __init__(self, *args, **kwargs):
         self.pdf_language = kwargs.pop('pdf_language', 'en')
@@ -477,6 +475,52 @@ class DieCutPDF(SimpleDocTemplate):
         canvas.drawRightString(doc.pagesize[0] - 0.5*inch, 0.3*inch, right_text)
         
         canvas.restoreState()
+
+def get_column_widths(pdf_lang):
+    """Get appropriate column widths based on language"""
+    if pdf_lang == "zh":
+        # Chinese text needs wider columns for readability
+        return {
+            'basic_col1': 1.0*inch,   # 2.54cm
+            'basic_col2': 1.5*inch,   # 3.81cm
+            'basic_col3': 1.0*inch,   # 2.54cm
+            'basic_col4': 1.3*inch,   # 3.3cm
+            'basic_col5': 1.0*inch,   # 2.54cm
+            'basic_col6': 1.5*inch,   # 3.81cm
+            'check_col1': 2.5*inch,   # 6.35cm - Check items
+            'check_col2': 0.5*inch,   # 1.27cm - Yes
+            'check_col3': 0.5*inch,   # 1.27cm - No
+            'check_col4': 2.0*inch,   # 5.08cm - Comments
+            'test_col1': 2.0*inch,    # 5.08cm - Test items
+            'test_col2': 1.0*inch,    # 2.54cm - Result
+            'test_col3': 2.0*inch,    # 5.08cm - Standard
+            'test_col4': 1.0*inch,    # 2.54cm - Pass/Fail
+            'signature_col1': 2.2*inch,  # 5.59cm - Role
+            'signature_col2': 2.5*inch,  # 6.35cm - Name/Signature
+            'signature_col3': 1.3*inch,  # 3.3cm - Date
+        }
+    else:
+        # English text can use narrower columns
+        return {
+            'basic_col1': 0.9*inch,   # 2.29cm
+            'basic_col2': 1.4*inch,   # 3.56cm
+            'basic_col3': 0.8*inch,   # 2.03cm
+            'basic_col4': 1.2*inch,   # 3.05cm
+            'basic_col5': 0.9*inch,   # 2.29cm
+            'basic_col6': 1.4*inch,   # 3.56cm
+            'check_col1': 2.2*inch,   # 5.59cm - Check items
+            'check_col2': 0.4*inch,   # 1.02cm - Yes
+            'check_col3': 0.4*inch,   # 1.02cm - No
+            'check_col4': 2.6*inch,   # 6.6cm - Comments
+            'test_col1': 1.8*inch,    # 4.57cm - Test items
+            'test_col2': 0.9*inch,    # 2.29cm - Result
+            'test_col3': 1.8*inch,    # 4.57cm - Standard
+            'test_col4': 0.9*inch,    # 2.29cm - Pass/Fail
+            'signature_col1': 2.0*inch,  # 5.08cm - Role
+            'signature_col2': 2.5*inch,  # 6.35cm - Name/Signature
+            'signature_col3': 1.5*inch,  # 3.81cm - Date
+        }
+
 def generate_pdf():
     """Generate Die Cut Test PDF report with enhanced design"""
     buffer = io.BytesIO()
@@ -485,6 +529,9 @@ def generate_pdf():
     selected_city = st.session_state.selected_city
     chinese_city = CHINESE_CITIES[selected_city]
     pdf_lang = st.session_state.pdf_language
+    
+    # Get column widths based on language
+    col_widths = get_column_widths(pdf_lang)
     
     # Create PDF with better margins
     doc = DieCutPDF(
@@ -569,7 +616,7 @@ def generate_pdf():
         'TableCell',
         parent=styles['Normal'],
         fontSize=9,
-        alignment=TA_LEFT,
+        alignment=TA_LEFT if pdf_lang == "en" else TA_CENTER,  # Chinese text centered
         fontName='Helvetica',
         leading=10
     )
@@ -587,7 +634,7 @@ def generate_pdf():
         'TableCellBold',
         parent=styles['Normal'],
         fontSize=9,
-        alignment=TA_LEFT,
+        alignment=TA_LEFT if pdf_lang == "en" else TA_CENTER,  # Chinese text centered
         fontName='Helvetica-Bold',
         leading=10
     )
@@ -636,6 +683,15 @@ def generate_pdf():
     )
     
     # Success/Fail indicators
+    if pdf_lang == "zh":
+        pass_text = "通过"
+        fail_text = "失败"
+        pending_text = "待定"
+    else:
+        pass_text = "PASS"
+        fail_text = "FAIL"
+        pending_text = "PENDING"
+    
     pass_style = ParagraphStyle(
         'Pass',
         parent=small_style,
@@ -693,7 +749,6 @@ def generate_pdf():
     elements.append(Spacer(1, 8))
     
     # Add decorative line
-
     elements.append(Spacer(1, 12))
     
     # ========== TEST DATES HEADER ==========
@@ -806,7 +861,14 @@ def generate_pdf():
         create_paragraph("", table_cell_style)
     ])
     
-    basic_table = Table(basic_data, colWidths=[0.9*inch, 1.4*inch, 0.8*inch, 1.2*inch, 0.9*inch, 1.4*inch])
+    basic_table = Table(basic_data, colWidths=[
+        col_widths['basic_col1'],
+        col_widths['basic_col2'],
+        col_widths['basic_col3'],
+        col_widths['basic_col4'],
+        col_widths['basic_col5'],
+        col_widths['basic_col6']
+    ])
     basic_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -891,7 +953,12 @@ def generate_pdf():
         ]
         check_data.append(row)
     
-    check_table = Table(check_data, colWidths=[2.2*inch, 0.4*inch, 0.4*inch, 2.6*inch])
+    check_table = Table(check_data, colWidths=[
+        col_widths['check_col1'],
+        col_widths['check_col2'],
+        col_widths['check_col3'],
+        col_widths['check_col4']
+    ])
     check_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
@@ -1043,14 +1110,11 @@ def generate_pdf():
         fail_check = st.session_state.get(fail_key, False)
         
         if pass_check:
-            status = create_paragraph("PASS", pass_style)
+            status = create_paragraph(pass_text, pass_style)
         elif fail_check:
-            status = create_paragraph("FAIL", fail_style)
+            status = create_paragraph(fail_text, fail_style)
         else:
-            if pdf_lang == "zh":
-                status = create_paragraph("待定", small_style)
-            else:
-                status = create_paragraph("PENDING", small_style)
+            status = create_paragraph(pending_text, small_style)
         
         row = [
             create_paragraph(item, table_cell_style),
@@ -1060,17 +1124,22 @@ def generate_pdf():
         ]
         test_data.append(row)
     
-    test_table = Table(test_data, colWidths=[1.8*inch, 0.9*inch, 1.8*inch, 0.9*inch])
+    test_table = Table(test_data, colWidths=[
+        col_widths['test_col1'],
+        col_widths['test_col2'],
+        col_widths['test_col3'],
+        col_widths['test_col4']
+    ])
     test_table.setStyle(TableStyle([
-    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-    ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),  # Center align all cells
-    ('FONTSIZE', (0, 0), (-1, -1), 8),
-    ('PADDING', (0, 0), (-1, -1), 4),
-    ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-]))
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('PADDING', (0, 0), (-1, -1), 4),
+        ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+    ]))
     elements.append(test_table)
     elements.append(Spacer(1, 15))
     
@@ -1144,8 +1213,6 @@ def generate_pdf():
     
     # ========== SIGNATURES ==========
     
-       # ========== SIGNATURES ==========
-    
     signatures_title = create_paragraph(get_pdf_text("signatures", pdf_lang), section_header_style, bold=True)
     elements.append(signatures_title)
     
@@ -1181,8 +1248,8 @@ def generate_pdf():
     
     sig_data.append([
         create_paragraph(get_pdf_text("check_items", pdf_lang), header_style),
-        create_paragraph("Name/Signature", header_style),
-        create_paragraph("Date", header_style)
+        create_paragraph("姓名/签名" if pdf_lang == "zh" else "Name/Signature", header_style),
+        create_paragraph("日期" if pdf_lang == "zh" else "Date", header_style)
     ])
     
     # Signature rows
@@ -1203,22 +1270,27 @@ def generate_pdf():
         sig_data.append(sig_row)
     
     # Create signature table with professional styling
-    signatures_table = Table(sig_data, colWidths=[2.0*inch, 2.5*inch, 1.5*inch])
+    signatures_table = Table(sig_data, colWidths=[
+        col_widths['signature_col1'],
+        col_widths['signature_col2'],
+        col_widths['signature_col3']
+    ])
     signatures_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # Center align header
-        ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Center align dates
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('ALIGN', (2, 1), (2, -1), 'CENTER'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('PADDING', (0, 0), (-1, -1), 8),
         ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.white),  # White line under header
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.white),
     ]))
     
     elements.append(signatures_table)
     elements.append(Spacer(1, 15))
+    
     # ========== FOOTER NOTES ==========
     
     # Updated date
@@ -1233,8 +1305,9 @@ def generate_pdf():
     
     elements.append(Spacer(1, 8))
     
-    # Disclaimer with better styling
- 
+    # Disclaimer
+    disclaimer_text = get_pdf_text("disclaimer_text", pdf_lang)
+    elements.append(create_paragraph(disclaimer_text, disclaimer_style))
     
     # Final decorative element
     elements.append(create_paragraph("•" * 80, ParagraphStyle(
@@ -1250,11 +1323,10 @@ def generate_pdf():
     try:
         doc.build(elements)
     except Exception as e:
-        # Fallback to simple build if custom class fails
+        st.error(f"Error building PDF: {str(e)}")
+        # Fallback to simple build
         SimpleDocTemplate.build(doc, elements)
     
-    buffer.seek(0)
-    return buffer
     buffer.seek(0)
     return buffer
 
@@ -1733,7 +1805,11 @@ with tab4:
         )
     
     # Disclaimer
- 
+    st.markdown(f"""
+    <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-top: 20px;'>
+        <strong>{get_text('disclaimer')}:</strong> {get_text('disclaimer_text')}
+    </div>
+    """, unsafe_allow_html=True)
 
 # Generate PDF Button
 st.markdown("---")
