@@ -448,20 +448,19 @@ def safe_int_convert(value, default=0):
         except (ValueError, TypeError):
             return default
     
-    # If it's a string, try to extract numbers
+    # If it's a string, try to convert
     if isinstance(value, str):
         value = value.strip()
         if value == "":
             return default
         
-        # Try to extract the first number from the string
+        # Try to extract numbers from the string
         try:
-            # Remove commas and other non-numeric characters (except decimal point)
-            cleaned = ''.join(c for c in value if c.isdigit() or c in '.-')
-            if cleaned:
-                # Try to convert to float first, then int
-                num = float(cleaned)
-                return int(num)
+            # Find all numbers in the string
+            numbers = re.findall(r'\d+\.?\d*', value)
+            if numbers:
+                # Use the first number found
+                return int(float(numbers[0]))
             return default
         except (ValueError, TypeError):
             return default
@@ -469,6 +468,41 @@ def safe_int_convert(value, default=0):
     # For any other type, try direct conversion
     try:
         return int(value)
+    except (ValueError, TypeError):
+        return default
+
+def safe_float_convert(value, default=0.0):
+    """Safely convert value to float, handling None and empty strings"""
+    if value is None:
+        return default
+    
+    # If it's already a float or int
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
+    # If it's a string, try to convert
+    if isinstance(value, str):
+        value = value.strip()
+        if value == "":
+            return default
+        
+        # Try to extract numbers from the string
+        try:
+            # Find all numbers (including decimals) in the string
+            numbers = re.findall(r'\d+\.?\d*', value)
+            if numbers:
+                # Use the first number found
+                return float(numbers[0])
+            return default
+        except (ValueError, TypeError):
+            return default
+    
+    # For any other type, try direct conversion
+    try:
+        return float(value)
     except (ValueError, TypeError):
         return default
 
@@ -498,7 +532,7 @@ def extract_and_preserve_numbers(text):
                     'value': match.group(),
                     'type': type_func
                 })
-        except Exception as e:
+        except Exception:
             # If regex fails, continue without numbers
             continue
     
@@ -689,10 +723,7 @@ class DieCutPDF(SimpleDocTemplate):
         
         # Set font based on language
         if self.pdf_language == "zh":
-            try:
-                canvas.setFont('Helvetica-Bold', 14)
-            except:
-                canvas.setFont('Helvetica-Bold', 14)
+            canvas.setFont('Helvetica-Bold', 14)
         else:
             canvas.setFont('Helvetica-Bold', 14)
             
@@ -1950,7 +1981,6 @@ with tab1:
         col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
         with col1:
             size_key = f"size_{i}"
-            # FIXED: Added a non-empty label with label_visibility="collapsed"
             size_val = st.text_input(
                 "Size",
                 value=size_item.get('size', ''),
@@ -1961,7 +1991,6 @@ with tab1:
             st.session_state.size_data[i]['size'] = size_val
         with col2:
             die_qty_key = f"die_qty_{i}"
-            # FIXED: Added a non-empty label with label_visibility="collapsed"
             die_qty_val = st.text_input(
                 "Die Qty",
                 value=size_item.get('die_qty', ''),
@@ -1972,7 +2001,6 @@ with tab1:
             st.session_state.size_data[i]['die_qty'] = die_qty_val
         with col3:
             batch_qty_key = f"batch_qty_{i}"
-            # FIXED: Added a non-empty label with label_visibility="collapsed"
             batch_qty_val = st.text_input(
                 "Batch Qty",
                 value=size_item.get('batch_qty', ''),
