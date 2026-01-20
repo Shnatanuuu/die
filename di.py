@@ -1950,8 +1950,9 @@ with tab1:
         col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
         with col1:
             size_key = f"size_{i}"
+            # FIXED: Added a non-empty label with label_visibility="collapsed"
             size_val = st.text_input(
-                "",
+                "Size",
                 value=size_item.get('size', ''),
                 placeholder="US 8, EU 41",
                 key=size_key,
@@ -1960,8 +1961,9 @@ with tab1:
             st.session_state.size_data[i]['size'] = size_val
         with col2:
             die_qty_key = f"die_qty_{i}"
+            # FIXED: Added a non-empty label with label_visibility="collapsed"
             die_qty_val = st.text_input(
-                "",
+                "Die Qty",
                 value=size_item.get('die_qty', ''),
                 placeholder="50",
                 key=die_qty_key,
@@ -1970,8 +1972,9 @@ with tab1:
             st.session_state.size_data[i]['die_qty'] = die_qty_val
         with col3:
             batch_qty_key = f"batch_qty_{i}"
+            # FIXED: Added a non-empty label with label_visibility="collapsed"
             batch_qty_val = st.text_input(
-                "",
+                "Batch Qty",
                 value=size_item.get('batch_qty', ''),
                 placeholder="200",
                 key=batch_qty_key,
