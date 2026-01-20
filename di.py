@@ -195,6 +195,14 @@ st.markdown("""
         margin: 0.3rem 0;
         border-left: 4px solid #667eea;
     }
+    .size-table-container {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -241,6 +249,8 @@ if 'english_values' not in st.session_state:
         'area_manager': '',
         'qa_manager': ''
     }
+if 'size_data' not in st.session_state:
+    st.session_state.size_data = []
 
 # SEPARATE TEXT DICTIONARIES
 ENGLISH_TEXTS = {
@@ -321,6 +331,10 @@ ENGLISH_TEXTS = {
     "signature_date": "Date",
     "updated_2022": "Updated 2022.8.30",
     "disclaimer_text": "Note: This review information does not release the factory from any responsibilities in the event of claims being received from our customer.",
+    "add_size": "Add Size",
+    "remove_size": "Remove",
+    "size_table_title": "Size & Quantity Details",
+    "total": "Total",
 }
 
 MANDARIN_TEXTS = {
@@ -401,6 +415,10 @@ MANDARIN_TEXTS = {
     "signature_date": "日期",
     "updated_2022": "更新 2022.8.30",
     "disclaimer_text": "此报表不免除我客人收到货后索赔而引起的货物供应商(工厂)的任何责任.",
+    "add_size": "添加尺码",
+    "remove_size": "删除",
+    "size_table_title": "尺码与数量详情",
+    "total": "总计",
 }
 
 def get_text(key, fallback=None):
@@ -535,6 +553,7 @@ def translate_text_with_openai(text, target_language):
         st.error(f"Translation error: {str(e)}")
         # Return original text if translation fails
         return text_str
+
 def get_display_value(field_key):
     """Get value for display based on current UI language"""
     # Get the stored English value
@@ -588,6 +607,7 @@ def update_english_value(field_key, displayed_value):
         else:
             # Already in English, store directly
             st.session_state.english_values[field_key] = display_str
+
 def get_pdf_display_value(field_key, pdf_language):
     """Get value for PDF generation based on PDF language"""
     # Get the stored English value
@@ -604,6 +624,20 @@ def get_pdf_display_value(field_key, pdf_language):
     
     # Ensure we always return a string, not None
     return str(result) if result is not None else ''
+
+# Helper function for size management
+def add_size_row():
+    """Add a new empty size row"""
+    st.session_state.size_data.append({
+        'size': '',
+        'die_qty': '',
+        'batch_qty': ''
+    })
+
+def remove_size_row(index):
+    """Remove a size row by index"""
+    if 0 <= index < len(st.session_state.size_data):
+        st.session_state.size_data.pop(index)
 
 # ENHANCED PDF Generation with proper Chinese support
 class DieCutPDF(SimpleDocTemplate):
@@ -1115,45 +1149,105 @@ def generate_pdf():
     elements.append(basic_table)
     elements.append(Spacer(1, 12))
     
-    # ========== QUANTITY INFORMATION ==========
+    # ========== SIZE & QUANTITY TABLE ==========
     
-    size_val = get_pdf_display_value('size', pdf_lang)
-    die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
-    batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
+    size_data = st.session_state.size_data
     
-    # Ensure all values are strings, not None
-    size_val = str(size_val) if size_val is not None else ''
-    die_qty_val = str(die_qty_val) if die_qty_val is not None else ''
-    batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else ''
-    
-    size_label = get_pdf_text("size", pdf_lang)
-    die_qty_label = get_pdf_text("die_qty", pdf_lang)
-    batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
-    
-    qty_data = [
-        [
-            create_paragraph(size_label, table_cell_bold_style, bold=True),
-            create_paragraph(die_qty_label, table_cell_bold_style, bold=True),
-            create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
-        ],
-        [
-            create_paragraph(size_val, table_cell_center_style),
-            create_paragraph(die_qty_val, table_cell_center_style),
-            create_paragraph(batch_qty_val, table_cell_center_style)
+    if size_data:
+        size_label = get_pdf_text("size", pdf_lang)
+        die_qty_label = get_pdf_text("die_qty", pdf_lang)
+        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
+        total_label = get_pdf_text("total", pdf_lang)
+        
+        # Create table data
+        qty_data = [[
+            create_paragraph(size_label, table_header_style, bold=True),
+            create_paragraph(die_qty_label, table_header_style, bold=True),
+            create_paragraph(batch_qty_label, table_header_style, bold=True)
+        ]]
+        
+        total_die_qty = 0
+        total_batch_qty = 0
+        
+        for item in size_data:
+            size_val = str(item.get('size', '')).strip() if item.get('size') else ''
+            die_qty_val = str(item.get('die_qty', '')).strip() if item.get('die_qty') else ''
+            batch_qty_val = str(item.get('batch_qty', '')).strip() if item.get('batch_qty') else ''
+            
+            # Calculate totals if values are numeric
+            try:
+                if die_qty_val:
+                    total_die_qty += int(die_qty_val)
+                if batch_qty_val:
+                    total_batch_qty += int(batch_qty_val)
+            except (ValueError, TypeError):
+                pass
+            
+            qty_data.append([
+                create_paragraph(size_val if size_val else '-', table_cell_center_style),
+                create_paragraph(die_qty_val if die_qty_val else '-', table_cell_center_style),
+                create_paragraph(batch_qty_val if batch_qty_val else '-', table_cell_center_style)
+            ])
+        
+        # Add total row
+        qty_data.append([
+            create_paragraph(f"<b>{total_label}</b>", table_cell_bold_style, bold=True),
+            create_paragraph(str(total_die_qty) if total_die_qty > 0 else '-', table_cell_bold_style, bold=True),
+            create_paragraph(str(total_batch_qty) if total_batch_qty > 0 else '-', table_cell_bold_style, bold=True)
+        ])
+        
+        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+        qty_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f4ff')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(qty_table)
+    else:
+        # Fallback to simple display if no size data
+        size_label = get_pdf_text("size", pdf_lang)
+        die_qty_label = get_pdf_text("die_qty", pdf_lang)
+        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
+        
+        size_val = get_pdf_display_value('size', pdf_lang)
+        die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
+        batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
+        
+        size_val = str(size_val) if size_val is not None else ''
+        die_qty_val = str(die_qty_val) if die_qty_val is not None else ''
+        batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else ''
+        
+        qty_data = [
+            [
+                create_paragraph(size_label, table_cell_bold_style, bold=True),
+                create_paragraph(die_qty_label, table_cell_bold_style, bold=True),
+                create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
+            ],
+            [
+                create_paragraph(size_val if size_val else '-', table_cell_center_style),
+                create_paragraph(die_qty_val if die_qty_val else '-', table_cell_center_style),
+                create_paragraph(batch_qty_val if batch_qty_val else '-', table_cell_center_style)
+            ]
         ]
-    ]
+        
+        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+        qty_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(qty_table)
     
-    qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
-    qty_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(qty_table)
     elements.append(Spacer(1, 15))
     
     # ========== MAIN CHECK POINTS ==========
@@ -1578,8 +1672,7 @@ def generate_pdf():
         doc.build(elements)
     except Exception as e:
         st.error(f"Error building PDF: {str(e)}")
-        # Fallback to simple build
-        SimpleDocTemplate.build(doc, elements)
+        raise e
     
     buffer.seek(0)
     return buffer
@@ -1727,17 +1820,6 @@ with tab1:
         )
         if factory_style_input != factory_style_display:
             update_english_value('factory_style', factory_style_input)
-        
-        # Size
-        size_display = get_display_value('size')
-        size_input = st.text_input(
-            f"{ICONS['measure']} {get_text('size')}", 
-            value=size_display,
-            placeholder="US 8, EU 41, UK 7",
-            key="size_input"
-        )
-        if size_input != size_display:
-            update_english_value('size', size_input)
     
     with col2:
         # Brand
@@ -1784,34 +1866,80 @@ with tab1:
         if sales_input != sales_display:
             update_english_value('sales', sales_input)
     
-    # Quantity and Ship Date
+    # Ship Date
     col1, col2, col3 = st.columns(3)
     with col1:
-        die_qty_display = get_display_value('die_qty')
-        die_qty_input = st.text_input(
-            f"{ICONS['quantity']} {get_text('die_qty')}", 
-            value=die_qty_display,
-            placeholder="50 pairs",
-            key="die_qty_input"
-        )
-        if die_qty_input != die_qty_display:
-            update_english_value('die_qty', die_qty_input)
-    with col2:
-        batch_qty_display = get_display_value('batch_qty')
-        batch_qty_input = st.text_input(
-            f"{ICONS['quantity']} {get_text('batch_qty')}", 
-            value=batch_qty_display,
-            placeholder="200 pairs",
-            key="batch_qty_input"
-        )
-        if batch_qty_input != batch_qty_display:
-            update_english_value('batch_qty', batch_qty_input)
-    with col3:
         ship_date = st.date_input(
             f"{ICONS['calendar']} {get_text('ship_date')}", 
             datetime.now(),
             key="ship_date"
         )
+    
+    # ========== SIZE & QUANTITY TABLE ==========
+    st.markdown(f"""
+    <div class="section-header" style="margin-top: 30px;">
+        <span class="section-header-icon">{ICONS["measure"]}</span>
+        {get_text("size_table_title")}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="size-table-container">', unsafe_allow_html=True)
+    
+    # Create table header
+    col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
+    with col1:
+        st.markdown(f"**{get_text('size')}**")
+    with col2:
+        st.markdown(f"**{get_text('die_qty')}**")
+    with col3:
+        st.markdown(f"**{get_text('batch_qty')}**")
+    with col4:
+        st.markdown("**&nbsp;**")
+    
+    # Display existing size rows
+    for i, size_item in enumerate(st.session_state.size_data):
+        col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
+        with col1:
+            size_key = f"size_{i}"
+            size_val = st.text_input(
+                "",
+                value=size_item.get('size', ''),
+                placeholder="US 8, EU 41",
+                key=size_key,
+                label_visibility="collapsed"
+            )
+            st.session_state.size_data[i]['size'] = size_val
+        with col2:
+            die_qty_key = f"die_qty_{i}"
+            die_qty_val = st.text_input(
+                "",
+                value=size_item.get('die_qty', ''),
+                placeholder="50",
+                key=die_qty_key,
+                label_visibility="collapsed"
+            )
+            st.session_state.size_data[i]['die_qty'] = die_qty_val
+        with col3:
+            batch_qty_key = f"batch_qty_{i}"
+            batch_qty_val = st.text_input(
+                "",
+                value=size_item.get('batch_qty', ''),
+                placeholder="200",
+                key=batch_qty_key,
+                label_visibility="collapsed"
+            )
+            st.session_state.size_data[i]['batch_qty'] = batch_qty_val
+        with col4:
+            if st.button(f"❌", key=f"remove_{i}", help=get_text("remove_size")):
+                remove_size_row(i)
+                st.rerun()
+    
+    # Add new row button
+    if st.button(f"{ICONS['quantity']} {get_text('add_size')}", use_container_width=True):
+        add_size_row()
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
     # Main Check Points
