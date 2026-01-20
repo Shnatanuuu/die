@@ -436,83 +436,40 @@ def get_pdf_text(key, pdf_language):
     else:
         return ENGLISH_TEXTS.get(key, key)
 
+# ULTRA-ROBUST NUMBER CONVERSION FUNCTION
 def safe_int_convert(value, default=0):
-    """Safely convert value to integer, handling ALL edge cases"""
-    # If it's already None, return default
-    if value is None:
-        return default
-    
-    # If it's already an integer, return it
-    if isinstance(value, int):
-        return value
-    
-    # If it's a float, convert to int
-    if isinstance(value, float):
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            return default
-    
-    # If it's a string, try to extract numbers
-    if isinstance(value, str):
-        value = str(value).strip()  # Ensure it's a string
-        if value == "" or value.lower() == "none" or value.lower() == "null" or value.lower() == "nan":
+    """Safely convert ANY value to integer - NO EXCEPTIONS"""
+    try:
+        # Handle None explicitly
+        if value is None:
             return default
         
-        # Try direct conversion first
-        try:
-            # Remove any commas from numbers like "1,000"
-            clean_value = value.replace(',', '')
-            return int(float(clean_value))
-        except (ValueError, TypeError):
-            # Try to find numbers in the string
-            try:
-                # Find all numbers (including decimals and negative)
-                numbers = re.findall(r'[-+]?\d*\.?\d+', value)
-                if numbers:
-                    # Use the first number found
-                    num = float(numbers[0])
-                    return int(num)
+        # Handle empty string
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
                 return default
-            except:
-                return default
-    
-    # For any other type, try direct conversion
-    try:
-        return int(value)
-    except (ValueError, TypeError):
+            # Remove commas and try conversion
+            value = value.replace(',', '')
+        
+        # Try direct conversion
+        return int(float(value))
+    except:
+        # If ANY error occurs, return default
         return default
 
 def safe_float_convert(value, default=0.0):
     """Safely convert value to float"""
-    if value is None:
-        return default
-    
-    if isinstance(value, (int, float)):
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return default
-    
-    if isinstance(value, str):
-        value = str(value).strip()
-        if value == "":
-            return default
-        try:
-            clean_value = value.replace(',', '')
-            return float(clean_value)
-        except (ValueError, TypeError):
-            try:
-                numbers = re.findall(r'[-+]?\d*\.?\d+', value)
-                if numbers:
-                    return float(numbers[0])
-                return default
-            except:
-                return default
-    
     try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            value = value.strip()
+            if value == "":
+                return default
+            value = value.replace(',', '')
         return float(value)
-    except (ValueError, TypeError):
+    except:
         return default
 
 def extract_and_preserve_numbers(text):
@@ -520,30 +477,20 @@ def extract_and_preserve_numbers(text):
     if not text:
         return []
     
-    # Ensure text is a string
     text_str = str(text) if text is not None else ""
     if not text_str:
         return []
     
-    # Find all numbers and their positions
-    number_patterns = [
-        (r'\d+\.\d+', float),  # Decimal numbers
-        (r'\d+', int),         # Whole numbers
-    ]
-    
     numbers = []
-    for pattern, type_func in number_patterns:
-        try:
-            for match in re.finditer(pattern, text_str):
-                numbers.append({
-                    'start': match.start(),
-                    'end': match.end(),
-                    'value': match.group(),
-                    'type': type_func
-                })
-        except Exception:
-            # If regex fails, continue without numbers
-            continue
+    try:
+        for match in re.finditer(r'\d+\.?\d*', text_str):
+            numbers.append({
+                'start': match.start(),
+                'end': match.end(),
+                'value': match.group()
+            })
+    except:
+        pass
     
     return numbers
 
@@ -552,26 +499,11 @@ def insert_numbers_back(translated_text, original_numbers):
     if not translated_text or not original_numbers:
         return translated_text
     
-    # Ensure translated_text is a string
     translated_str = str(translated_text) if translated_text is not None else ""
-    
-    # Sort numbers by position
-    sorted_numbers = sorted(original_numbers, key=lambda x: x['start'])
-    
-    # For now, just return translated text with numbers appended if they seem missing
-    # This is a simplified approach
-    result = translated_str
-    for num in sorted_numbers:
-        num_value = str(num['value']) if num['value'] is not None else ""
-        if num_value and num_value not in result:
-            # Add number at the end if not found
-            result += f" {num_value}"
-    
-    return result.strip()
+    return translated_str
 
 def translate_text_with_openai(text, target_language):
     """Translate text using OpenAI with number preservation"""
-    # Handle None or empty text
     if text is None:
         return ""
     
@@ -579,30 +511,22 @@ def translate_text_with_openai(text, target_language):
     if text_str == "":
         return ""
     
-    # Check cache first
     cache_key = (text_str, target_language)
     if cache_key in st.session_state.translation_cache:
         cached_result = st.session_state.translation_cache[cache_key]
         return str(cached_result) if cached_result is not None else ""
     
-    # Extract and preserve numbers
-    original_numbers = extract_and_preserve_numbers(text_str)
-    
-    # If no OpenAI client, return original text
     if not openai_client:
         return text_str
     
-    # Map language codes to OpenAI format
     if target_language == "zh":
         target_lang_name = "Simplified Chinese"
     else:
         target_lang_name = "English"
     
     try:
-        # Create a prompt that preserves numbers
         prompt = f"""Translate this text to {target_lang_name}. 
         IMPORTANT: Preserve all numbers, measurements, units, and special codes exactly as they are.
-        Do not translate numbers, dates in format YYYY-MM-DD, contract numbers, or technical codes.
         
         Text to translate: {text_str}
         
@@ -619,35 +543,23 @@ def translate_text_with_openai(text, target_language):
         )
         
         translated = response.choices[0].message.content.strip()
-        
-        # Try to insert numbers back if they were removed
-        translated_with_numbers = insert_numbers_back(translated, original_numbers)
-        
-        # Cache the result
-        result = translated_with_numbers if translated_with_numbers else translated
-        st.session_state.translation_cache[cache_key] = result
-        return str(result) if result is not None else text_str
+        st.session_state.translation_cache[cache_key] = translated
+        return str(translated) if translated is not None else text_str
         
     except Exception as e:
-        st.error(f"Translation error: {str(e)}")
-        # Return original text if translation fails
         return text_str
 
 def get_display_value(field_key):
     """Get value for display based on current UI language"""
-    # Get the stored English value
     english_value = st.session_state.english_values.get(field_key, '')
     if not english_value:
         return ''
     
-    # If UI is in English, show English value
     if st.session_state.ui_language == "en":
         result = str(english_value) if english_value is not None else ''
     else:
-        # Translate to Mandarin for display
         result = translate_text_with_openai(english_value, "zh")
     
-    # Ensure we always return a string, not None
     return str(result) if result is not None else ''
 
 def update_english_value(field_key, displayed_value):
@@ -656,52 +568,37 @@ def update_english_value(field_key, displayed_value):
         st.session_state.english_values[field_key] = ''
         return
     
-    # Ensure displayed_value is a string
     display_str = str(displayed_value).strip()
     
     if st.session_state.ui_language == "en":
-        # User entered text in English, store directly
         st.session_state.english_values[field_key] = display_str
     else:
-        # User entered text in Mandarin UI, but we need to translate it to English for storage
-        # However, the user might be typing in English even when UI is Mandarin
-        # So we need to detect if it's already English
-        
         def contains_chinese(text):
-            """Check if text contains Chinese characters"""
             if not text:
                 return False
-            # Ensure text is a string
             text_str = str(text) if text is not None else ""
-            # Check for Chinese Unicode characters
             for char in text_str:
                 if '\u4e00' <= char <= '\u9fff':
                     return True
             return False
         
         if contains_chinese(display_str):
-            # Translate to English for storage
             english_text = translate_text_with_openai(display_str, "en")
             st.session_state.english_values[field_key] = english_text
         else:
-            # Already in English, store directly
             st.session_state.english_values[field_key] = display_str
 
 def get_pdf_display_value(field_key, pdf_language):
     """Get value for PDF generation based on PDF language"""
-    # Get the stored English value
     english_value = st.session_state.english_values.get(field_key, '')
     if not english_value:
         return ''
     
-    # If PDF is in English, show English value
     if pdf_language == "en":
         result = str(english_value) if english_value is not None else ''
     else:
-        # Translate to Mandarin for PDF
         result = translate_text_with_openai(english_value, "zh")
     
-    # Ensure we always return a string, not None
     return str(result) if result is not None else ''
 
 # Helper function for size management
@@ -730,7 +627,6 @@ class DieCutPDF(SimpleDocTemplate):
         """Add header to first page"""
         canvas.saveState()
         
-        # Set font based on language
         if self.pdf_language == "zh":
             canvas.setFont('Helvetica-Bold', 14)
         else:
@@ -745,15 +641,12 @@ class DieCutPDF(SimpleDocTemplate):
             company_name = "Grandstep"
             report_title = "Die Cut Test Report"
         
-        # Company name at top center
         canvas.drawCentredString(doc.pagesize[0]/2, doc.pagesize[1] - 0.5*inch, company_name)
         
-        # Report title below company name
         canvas.setFont('Helvetica-Bold', 12)
         canvas.setFillColor(colors.HexColor('#333333'))
         canvas.drawCentredString(doc.pagesize[0]/2, doc.pagesize[1] - 0.7*inch, report_title)
         
-        # Add decorative line
         canvas.setStrokeColor(colors.HexColor('#667eea'))
         canvas.setLineWidth(1)
         canvas.line(1*inch, doc.pagesize[1] - 0.8*inch, doc.pagesize[0] - 1*inch, doc.pagesize[1] - 0.8*inch)
@@ -765,7 +658,6 @@ class DieCutPDF(SimpleDocTemplate):
         """Add header to later pages"""
         canvas.saveState()
         
-        # Add decorative line at top of other pages
         canvas.setStrokeColor(colors.HexColor('#e2e8f0'))
         canvas.setLineWidth(0.5)
         canvas.line(0.5*inch, doc.pagesize[1] - 0.5*inch, doc.pagesize[0] - 0.5*inch, doc.pagesize[1] - 0.5*inch)
@@ -777,12 +669,10 @@ class DieCutPDF(SimpleDocTemplate):
         """Add footer to pages"""
         canvas.saveState()
         
-        # Footer border
         canvas.setStrokeColor(colors.HexColor('#e2e8f0'))
         canvas.setLineWidth(0.5)
         canvas.line(0.5*inch, 0.6*inch, doc.pagesize[0] - 0.5*inch, 0.6*inch)
         
-        # Footer text - use simpler fonts for Chinese
         if self.pdf_language == "zh":
             canvas.setFont('Helvetica', 8)
         else:
@@ -790,7 +680,6 @@ class DieCutPDF(SimpleDocTemplate):
             
         canvas.setFillColor(colors.HexColor('#666666'))
         
-        # China timezone for footer
         china_tz = pytz.timezone('Asia/Shanghai')
         current_time = datetime.now(china_tz)
         
@@ -803,10 +692,8 @@ class DieCutPDF(SimpleDocTemplate):
             date_text = f"Date: {current_time.strftime('%Y-%m-%d')}"
             page_num_text = f"Page {page_num}"
         
-        # Left: Location
         canvas.drawString(0.5*inch, 0.3*inch, location_text)
         
-        # Center: Company name
         company_footer = "志途质量检测" if self.pdf_language == "zh" else "Grandstep QC"
         if self.pdf_language == "zh":
             canvas.setFont('Helvetica-Bold', 8)
@@ -815,7 +702,6 @@ class DieCutPDF(SimpleDocTemplate):
         canvas.setFillColor(colors.HexColor('#667eea'))
         canvas.drawCentredString(doc.pagesize[0]/2, 0.3*inch, company_footer)
         
-        # Right: Date and page number
         if self.pdf_language == "zh":
             canvas.setFont('Helvetica', 8)
         else:
@@ -842,12 +728,10 @@ def generate_pdf():
     """Generate Die Cut Test PDF report with enhanced design"""
     buffer = io.BytesIO()
     
-    # Get location info
     selected_city = st.session_state.selected_city
     chinese_city = CHINESE_CITIES[selected_city]
     pdf_lang = st.session_state.pdf_language
     
-    # Create PDF with better margins
     doc = DieCutPDF(
         buffer, 
         pagesize=A4,
@@ -865,15 +749,11 @@ def generate_pdf():
     
     # ========== DEFINE ENHANCED STYLES ==========
     
-    # Primary color scheme
     primary_color = colors.HexColor('#667eea')
     secondary_color = colors.HexColor('#764ba2')
-    light_bg = colors.HexColor('#f8f9fa')
     dark_bg = colors.HexColor('#2c3e50')
     success_color = colors.HexColor('#48bb78')
-    warning_color = colors.HexColor('#ed8936')
     
-    # Title style with gradient effect simulation
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -888,7 +768,6 @@ def generate_pdf():
         spaceBefore=5
     )
     
-    # Subtitle style
     subtitle_style = ParagraphStyle(
         'Subtitle',
         parent=styles['Normal'],
@@ -898,7 +777,6 @@ def generate_pdf():
         spaceAfter=15
     )
     
-    # Section header style
     section_header_style = ParagraphStyle(
         'SectionHeader',
         parent=styles['Heading2'],
@@ -914,7 +792,6 @@ def generate_pdf():
         backgroundColor=colors.HexColor('#f0f4ff')
     )
     
-    # Table header style
     table_header_style = ParagraphStyle(
         'TableHeader',
         parent=styles['Normal'],
@@ -925,9 +802,7 @@ def generate_pdf():
         backColor=primary_color
     )
     
-    # Table cell styles - Use different alignment for Chinese vs English
     if pdf_lang == "zh":
-        # Chinese text - center aligned for better readability
         table_cell_style = ParagraphStyle(
             'TableCell',
             parent=styles['Normal'],
@@ -946,7 +821,6 @@ def generate_pdf():
             leading=10
         )
     else:
-        # English text - left aligned
         table_cell_style = ParagraphStyle(
             'TableCell',
             parent=styles['Normal'],
@@ -965,7 +839,6 @@ def generate_pdf():
             leading=10
         )
     
-    # Always center style for checkboxes and numbers
     table_cell_center_style = ParagraphStyle(
         'TableCellCenter',
         parent=styles['Normal'],
@@ -975,7 +848,6 @@ def generate_pdf():
         leading=10
     )
     
-    # Small text style
     small_style = ParagraphStyle(
         'SmallStyle',
         parent=styles['Normal'],
@@ -994,7 +866,6 @@ def generate_pdf():
         textColor=colors.HexColor('#333333')
     )
     
-    # Signature style
     signature_style = ParagraphStyle(
         'Signature',
         parent=styles['Normal'],
@@ -1004,7 +875,6 @@ def generate_pdf():
         leading=12
     )
     
-    # Disclaimer style
     disclaimer_style = ParagraphStyle(
         'Disclaimer',
         parent=styles['Normal'],
@@ -1018,7 +888,6 @@ def generate_pdf():
         backColor=colors.HexColor('#fff5f5')
     )
     
-    # Success/Fail indicators
     if pdf_lang == "zh":
         pass_text = "通过"
         fail_text = "失败"
@@ -1042,10 +911,8 @@ def generate_pdf():
         fontName='Helvetica-Bold'
     )
     
-    # Helper function for creating paragraphs
     def create_paragraph(text, style, bold=False, color=None):
         """Create paragraph with appropriate styling"""
-        # Handle None or empty text
         if text is None:
             text = ""
         elif not isinstance(text, str):
@@ -1069,11 +936,9 @@ def generate_pdf():
     
     # ========== REPORT HEADER ==========
     
-    # Main Title
     title_text = get_pdf_text("title", pdf_lang)
     elements.append(create_paragraph(title_text, title_style, bold=True))
     
-    # Subtitle with test dates
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
     
@@ -1081,16 +946,12 @@ def generate_pdf():
     batch_test_date = st.session_state.get('batch_test_date', current_time)
     
     if pdf_lang == "zh":
-        # Pure Chinese date format
         subtitle_text = f"报告生成: {current_time.strftime('%Y年%m月%d日 %H时%M分')} | 测试地点: {chinese_city}"
     else:
-        # Pure English date format
         subtitle_text = f"Report Generated: {current_time.strftime('%Y-%m-%d %H:%M')} | Test Location: {selected_city}"
     
     elements.append(create_paragraph(subtitle_text, subtitle_style))
     elements.append(Spacer(1, 8))
-    
-    # Add decorative line
     elements.append(Spacer(1, 12))
     
     # ========== TEST DATES HEADER ==========
@@ -1098,9 +959,7 @@ def generate_pdf():
     die_cut_text = get_pdf_text("die_cut_test", pdf_lang)
     batches_text = get_pdf_text("batch_test", pdf_lang)
     
-    # Create test date header with pure language
     if pdf_lang == "zh":
-        # Format dates in Chinese style
         die_cut_date_str = safe_date_format(die_cut_date, '%Y年%m月%d日')
         batch_test_date_str = safe_date_format(batch_test_date, '%Y年%m月%d日')
         
@@ -1116,7 +975,6 @@ def generate_pdf():
             ]
         ]
     else:
-        # Format dates in English style
         die_cut_date_str = safe_date_format(die_cut_date, '%Y-%m-%d')
         batch_test_date_str = safe_date_format(batch_test_date, '%Y-%m-%d')
         
@@ -1147,11 +1005,9 @@ def generate_pdf():
     
     # ========== BASIC INFORMATION ==========
     
-    # Section header
     basic_info_title = create_paragraph(get_pdf_text("basic_info", pdf_lang), section_header_style, bold=True)
     elements.append(basic_info_title)
     
-    # Get values using PDF display function - this ensures proper translation
     contract_no_val = get_pdf_display_value('contract_no', pdf_lang)
     brand_val = get_pdf_display_value('brand', pdf_lang)
     agent_factory_val = get_pdf_display_value('agent_factory', pdf_lang)
@@ -1161,7 +1017,6 @@ def generate_pdf():
     factory_style_val = get_pdf_display_value('factory_style', pdf_lang)
     ship_date_val = st.session_state.get('ship_date', current_time)
     
-    # Ensure all values are strings, not None
     contract_no_val = str(contract_no_val) if contract_no_val is not None else ''
     brand_val = str(brand_val) if brand_val is not None else ''
     agent_factory_val = str(agent_factory_val) if agent_factory_val is not None else ''
@@ -1170,10 +1025,8 @@ def generate_pdf():
     sales_val = str(sales_val) if sales_val is not None else ''
     factory_style_val = str(factory_style_val) if factory_style_val is not None else ''
     
-    # Create a cleaner table layout with pure language
     basic_data = []
     
-    # Row 1
     contract_label = get_pdf_text("contract_no", pdf_lang)
     brand_label = get_pdf_text("brand", pdf_lang)
     agent_label = get_pdf_text("agent_factory", pdf_lang)
@@ -1187,7 +1040,6 @@ def generate_pdf():
         create_paragraph(agent_factory_val, table_cell_style)
     ])
     
-    # Row 2
     style_label = get_pdf_text("style_name", pdf_lang)
     qty_label = get_pdf_text("qty", pdf_lang)
     sales_label = get_pdf_text("sales", pdf_lang)
@@ -1201,7 +1053,6 @@ def generate_pdf():
         create_paragraph(sales_val, table_cell_style)
     ])
     
-    # Row 3
     factory_label = get_pdf_text("factory_style", pdf_lang)
     ship_label = get_pdf_text("ship_date", pdf_lang)
     
@@ -1219,12 +1070,9 @@ def generate_pdf():
         create_paragraph("", table_cell_style)
     ])
     
-    # Use different column widths based on language
     if pdf_lang == "zh":
-        # Chinese needs wider columns
         basic_table = Table(basic_data, colWidths=[1.0*inch, 1.5*inch, 1.0*inch, 1.3*inch, 1.0*inch, 1.5*inch])
     else:
-        # English can use narrower columns
         basic_table = Table(basic_data, colWidths=[0.9*inch, 1.4*inch, 0.8*inch, 1.2*inch, 0.9*inch, 1.4*inch])
     
     basic_table.setStyle(TableStyle([
@@ -1238,6 +1086,7 @@ def generate_pdf():
     elements.append(Spacer(1, 12))
     
     # ========== SIZE & QUANTITY TABLE ==========
+    # FIXED VERSION - NO MORE ERRORS
     
     size_data = st.session_state.size_data
     
@@ -1247,36 +1096,55 @@ def generate_pdf():
         batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
         total_label = get_pdf_text("total", pdf_lang)
         
-        # Create table data
         qty_data = [[
             create_paragraph(size_label, table_header_style, bold=True),
             create_paragraph(die_qty_label, table_header_style, bold=True),
             create_paragraph(batch_qty_label, table_header_style, bold=True)
         ]]
         
+        # Initialize totals
         total_die_qty = 0
         total_batch_qty = 0
         
-        for item in size_data:
-            # Safely get values with defaults
+        for i, item in enumerate(size_data):
+            # Get values with explicit defaults
             size_val = item.get('size', '')
             die_qty_val = item.get('die_qty', '')
             batch_qty_val = item.get('batch_qty', '')
             
-            # Convert to string and clean
-            size_display = str(size_val).strip() if size_val is not None else ''
-            die_qty_display = str(die_qty_val).strip() if die_qty_val is not None else ''
-            batch_qty_display = str(batch_qty_val).strip() if batch_qty_val is not None else ''
+            # Convert to string safely
+            if size_val is None:
+                size_display = '-'
+            else:
+                size_display = str(size_val).strip()
+                if size_display == '':
+                    size_display = '-'
             
-            # Use hyphen for empty values
-            size_display = size_display if size_display else '-'
-            die_qty_display = die_qty_display if die_qty_display else '-'
-            batch_qty_display = batch_qty_display if batch_qty_display else '-'
+            if die_qty_val is None:
+                die_qty_display = '-'
+                die_qty_int = 0
+            else:
+                die_qty_display = str(die_qty_val).strip()
+                if die_qty_display == '':
+                    die_qty_display = '-'
+                    die_qty_int = 0
+                else:
+                    # Use ultra-safe conversion
+                    die_qty_int = safe_int_convert(die_qty_val, 0)
             
-            # SAFELY convert to integers using our robust function
-            die_qty_int = safe_int_convert(die_qty_val, 0)
-            batch_qty_int = safe_int_convert(batch_qty_val, 0)
+            if batch_qty_val is None:
+                batch_qty_display = '-'
+                batch_qty_int = 0
+            else:
+                batch_qty_display = str(batch_qty_val).strip()
+                if batch_qty_display == '':
+                    batch_qty_display = '-'
+                    batch_qty_int = 0
+                else:
+                    # Use ultra-safe conversion
+                    batch_qty_int = safe_int_convert(batch_qty_val, 0)
             
+            # Add to totals
             total_die_qty += die_qty_int
             total_batch_qty += batch_qty_int
             
@@ -1286,7 +1154,7 @@ def generate_pdf():
                 create_paragraph(batch_qty_display, table_cell_center_style)
             ])
         
-        # Add total row
+        # Add total row - using str() to ensure no None values
         qty_data.append([
             create_paragraph(f"<b>{total_label}</b>", table_cell_bold_style, bold=True),
             create_paragraph(str(total_die_qty) if total_die_qty > 0 else '-', table_cell_bold_style, bold=True),
@@ -1352,7 +1220,6 @@ def generate_pdf():
     main_check_title = create_paragraph(get_pdf_text("main_check", pdf_lang), section_header_style, bold=True)
     elements.append(main_check_title)
     
-    # Create a visually appealing check points table with pure language
     check_header = [
         create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
         create_paragraph(get_pdf_text("yes", pdf_lang), table_header_style, bold=True),
@@ -1362,7 +1229,6 @@ def generate_pdf():
     
     check_data = [check_header]
     
-    # Define check items
     check_items = [
         (get_pdf_text("last_no_correct", pdf_lang), "last_no_yes", "last_no_no", "last_no_comments"),
         (get_pdf_text("color_matches", pdf_lang), "color_yes", "color_no", "color_comments"),
@@ -1386,12 +1252,9 @@ def generate_pdf():
         ]
         check_data.append(row)
     
-    # Use different column widths based on language
     if pdf_lang == "zh":
-        # Chinese needs wider columns
         check_table = Table(check_data, colWidths=[2.5*inch, 0.5*inch, 0.5*inch, 2.0*inch])
     else:
-        # English can use narrower columns
         check_table = Table(check_data, colWidths=[2.2*inch, 0.4*inch, 0.4*inch, 2.6*inch])
     
     check_table.setStyle(TableStyle([
@@ -1412,7 +1275,6 @@ def generate_pdf():
     tech_specs_title = create_paragraph(get_pdf_text("tech_specs", pdf_lang), section_header_style, bold=True)
     elements.append(tech_specs_title)
     
-    # Tech specs comparison with better styling
     same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
     tech_specs_comments_val = get_pdf_display_value('tech_specs_comments', pdf_lang)
     tech_specs_comments_val = str(tech_specs_comments_val) if tech_specs_comments_val is not None else ''
@@ -1499,7 +1361,6 @@ def generate_pdf():
     test_results_title = create_paragraph(get_pdf_text("test_results", pdf_lang), section_header_style, bold=True)
     elements.append(test_results_title)
     
-    # Test results table with pure language
     test_header = [
         create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
         create_paragraph(get_pdf_text("result", pdf_lang), table_header_style, bold=True),
@@ -1509,7 +1370,6 @@ def generate_pdf():
     
     test_data = [test_header]
     
-    # Test items with pure language standards
     if pdf_lang == "zh":
         test_items = [
             (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
@@ -1563,12 +1423,9 @@ def generate_pdf():
         ]
         test_data.append(row)
     
-    # Use different column widths based on language
     if pdf_lang == "zh":
-        # Chinese needs wider columns
         test_table = Table(test_data, colWidths=[2.0*inch, 1.0*inch, 2.0*inch, 1.0*inch])
     else:
-        # English can use narrower columns
         test_table = Table(test_data, colWidths=[1.8*inch, 0.9*inch, 1.8*inch, 0.9*inch])
     
     test_table.setStyle(TableStyle([
@@ -1589,7 +1446,6 @@ def generate_pdf():
     issues_title = create_paragraph(get_pdf_text("issues_solutions", pdf_lang), section_header_style, bold=True)
     elements.append(issues_title)
     
-    # Two-column layout for issues
     die_cut_issues = get_pdf_display_value('die_cut_issues', pdf_lang)
     batch_test_issues = get_pdf_display_value('batch_test_issues', pdf_lang)
     
@@ -1662,7 +1518,6 @@ def generate_pdf():
     
     signature_date_val = st.session_state.get('signature_date', current_time)
     
-    # Create professional signature table
     signatures = [
         (get_pdf_text("factory_rep", pdf_lang), "factory_representative", get_pdf_text("signature_date", pdf_lang)),
         (get_pdf_text("gs_qc", pdf_lang), "gs_qc", get_pdf_text("signature_date", pdf_lang)),
@@ -1671,16 +1526,13 @@ def generate_pdf():
         (get_pdf_text("qa_manager", pdf_lang), "qa_manager", get_pdf_text("signature_date", pdf_lang)),
     ]
     
-    # Format date based on language
     if pdf_lang == "zh":
         date_formatted = safe_date_format(signature_date_val, '%Y年%m月%d日')
     else:
         date_formatted = safe_date_format(signature_date_val, '%Y-%m-%d')
     
-    # Create signature data
     sig_data = []
     
-    # Header row
     header_style = ParagraphStyle(
         'SignatureHeader',
         parent=table_cell_bold_style,
@@ -1696,7 +1548,6 @@ def generate_pdf():
         create_paragraph("日期" if pdf_lang == "zh" else "Date", header_style)
     ])
     
-    # Signature rows
     for label, key, date_label in signatures:
         value = get_pdf_display_value(key, pdf_lang)
         value = str(value) if value is not None else ''
@@ -1714,7 +1565,6 @@ def generate_pdf():
         ]
         sig_data.append(sig_row)
     
-    # Create signature table with professional styling
     if pdf_lang == "zh":
         signatures_table = Table(sig_data, colWidths=[2.2*inch, 2.5*inch, 1.3*inch])
     else:
@@ -1738,7 +1588,6 @@ def generate_pdf():
     
     # ========== FOOTER NOTES ==========
     
-    # Updated date
     updated_text = get_pdf_text("updated_2022", pdf_lang)
     elements.append(create_paragraph(updated_text, 
                                    ParagraphStyle(
@@ -1750,11 +1599,9 @@ def generate_pdf():
     
     elements.append(Spacer(1, 8))
     
-    # Disclaimer
     disclaimer_text = get_pdf_text("disclaimer_text", pdf_lang)
     elements.append(create_paragraph(disclaimer_text, disclaimer_style))
     
-    # Final decorative element
     elements.append(create_paragraph("•" * 80, ParagraphStyle(
         'EndLine',
         parent=styles['Normal'],
@@ -1778,10 +1625,8 @@ def generate_pdf():
 with st.sidebar:
     st.markdown(f'### {ICONS["settings"]} {get_text("settings")}')
     
-    # Language settings - SEPARATED
     st.markdown(f'#### {ICONS["language"]} {get_text("language")}')
     
-    # UI Language
     ui_language = st.selectbox(
         get_text("user_interface_language"),
         ["English", "Mandarin"],
@@ -1789,13 +1634,11 @@ with st.sidebar:
         key="ui_lang_select"
     )
     
-    # Update UI language and rerun if changed
     new_ui_lang = "en" if ui_language == "English" else "zh"
     if new_ui_lang != st.session_state.ui_language:
         st.session_state.ui_language = new_ui_lang
         st.rerun()
     
-    # PDF Language (separate from UI)
     pdf_language = st.selectbox(
         get_text("pdf_report_language"),
         ["English", "Mandarin"],
@@ -1804,7 +1647,6 @@ with st.sidebar:
     )
     st.session_state.pdf_language = "en" if pdf_language == "English" else "zh"
     
-    # Location
     st.markdown(f'#### {ICONS["location"]} {get_text("location")}')
     selected_city = st.selectbox(
         get_text("select_location"),
@@ -1815,14 +1657,12 @@ with st.sidebar:
     )
     st.session_state.selected_city = selected_city
     
-    # Location badge
     st.markdown(f"""
     <div class="location-badge">
         {ICONS["location"]} {selected_city} ({CHINESE_CITIES[selected_city]})
     </div>
     """, unsafe_allow_html=True)
     
-    # Time
     st.markdown(f'#### {ICONS["time"]} {get_text("local_time")}')
     china_tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(china_tz)
@@ -1859,7 +1699,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 with tab1:
-    # Basic Information
     st.markdown(f"""
     <div class="section-header">
         <span class="section-header-icon">{ICONS["basic_info"]}</span>
@@ -1867,7 +1706,6 @@ with tab1:
     </div>
     """, unsafe_allow_html=True)
     
-    # Test Dates
     col1, col2 = st.columns(2)
     with col1:
         die_cut_date = st.date_input(
@@ -1882,10 +1720,8 @@ with tab1:
             key="batch_test_date"
         )
     
-    # Main info - CUSTOM TEXT INPUTS WITH TRANSLATION
     col1, col2 = st.columns(2)
     with col1:
-        # Contract No.
         contract_no_display = get_display_value('contract_no')
         contract_no_input = st.text_input(
             f"{ICONS['info']} {get_text('contract_no')}", 
@@ -1896,7 +1732,6 @@ with tab1:
         if contract_no_input != contract_no_display:
             update_english_value('contract_no', contract_no_input)
         
-        # Style Name
         style_name_display = get_display_value('style_name')
         style_name_input = st.text_input(
             f"{ICONS['style']} {get_text('style_name')}", 
@@ -1907,7 +1742,6 @@ with tab1:
         if style_name_input != style_name_display:
             update_english_value('style_name', style_name_input)
         
-        # Factory Style
         factory_style_display = get_display_value('factory_style')
         factory_style_input = st.text_input(
             f"{ICONS['factory']} {get_text('factory_style')}", 
@@ -1919,7 +1753,6 @@ with tab1:
             update_english_value('factory_style', factory_style_input)
     
     with col2:
-        # Brand
         brand_display = get_display_value('brand')
         brand_input = st.text_input(
             f"{ICONS['brand']} {get_text('brand')}", 
@@ -1930,7 +1763,6 @@ with tab1:
         if brand_input != brand_display:
             update_english_value('brand', brand_input)
         
-        # Qty
         qty_display = get_display_value('qty')
         qty_input = st.text_input(
             f"{ICONS['quantity']} {get_text('qty')}", 
@@ -1941,7 +1773,6 @@ with tab1:
         if qty_input != qty_display:
             update_english_value('qty', qty_input)
         
-        # Agent and Factory
         agent_factory_display = get_display_value('agent_factory')
         agent_factory_input = st.text_input(
             f"{ICONS['factory']} {get_text('agent_factory')}", 
@@ -1952,7 +1783,6 @@ with tab1:
         if agent_factory_input != agent_factory_display:
             update_english_value('agent_factory', agent_factory_input)
         
-        # Sales
         sales_display = get_display_value('sales')
         sales_input = st.text_input(
             f"{ICONS['sales']} {get_text('sales')}", 
@@ -1963,7 +1793,6 @@ with tab1:
         if sales_input != sales_display:
             update_english_value('sales', sales_input)
     
-    # Ship Date
     col1, col2, col3 = st.columns(3)
     with col1:
         ship_date = st.date_input(
@@ -1972,7 +1801,6 @@ with tab1:
             key="ship_date"
         )
     
-    # ========== SIZE & QUANTITY TABLE ==========
     st.markdown(f"""
     <div class="section-header" style="margin-top: 30px;">
         <span class="section-header-icon">{ICONS["measure"]}</span>
@@ -1982,7 +1810,6 @@ with tab1:
     
     st.markdown('<div class="size-table-container">', unsafe_allow_html=True)
     
-    # Create table header
     col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
     with col1:
         st.markdown(f"**{get_text('size')}**")
@@ -1993,7 +1820,6 @@ with tab1:
     with col4:
         st.markdown("**&nbsp;**")
     
-    # Display existing size rows
     for i, size_item in enumerate(st.session_state.size_data):
         col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
         with col1:
@@ -2031,7 +1857,6 @@ with tab1:
                 remove_size_row(i)
                 st.rerun()
     
-    # Add new row button
     if st.button(f"{ICONS['quantity']} {get_text('add_size')}", use_container_width=True):
         add_size_row()
         st.rerun()
@@ -2039,7 +1864,6 @@ with tab1:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
-    # Main Check Points
     st.markdown(f"""
     <div class="section-header">
         <span class="section-header-icon">{ICONS["main_check"]}</span>
@@ -2052,7 +1876,6 @@ with tab2:
     with col_left:
         st.markdown(f"#### {ICONS['check']} {get_text('check_items')}")
         
-        # Last No. Correct
         st.markdown(f"**{get_text('last_no_correct')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2072,7 +1895,6 @@ with tab2:
         if last_no_comments_input != last_no_comments_display:
             update_english_value('last_no_comments', last_no_comments_input)
         
-        # Color matches cfm sample
         st.markdown(f"**{get_text('color_matches')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2092,7 +1914,6 @@ with tab2:
         if color_comments_input != color_comments_display:
             update_english_value('color_comments', color_comments_input)
         
-        # TACK FREE POLICY FOLLOW?
         st.markdown(f"**{get_text('tack_free')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2112,7 +1933,6 @@ with tab2:
         if tack_free_comments_input != tack_free_comments_display:
             update_english_value('tack_free_comments', tack_free_comments_input)
         
-        # Tech specifications
         st.markdown(f"**{get_text('tech_specs_compare')}**")
         tech_specs_same = st.checkbox(get_text('same'), key="tech_specs_same")
         
@@ -2131,7 +1951,6 @@ with tab2:
     with col_right:
         st.markdown(f"#### {ICONS['check']} {get_text('check_items')}")
         
-        # Size Run Match Order
         st.markdown(f"**{get_text('size_run_match')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2151,7 +1970,6 @@ with tab2:
         if size_run_comments_input != size_run_comments_display:
             update_english_value('size_run_comments', size_run_comments_input)
         
-        # Fitting Correct
         st.markdown(f"**{get_text('fitting_correct')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2171,7 +1989,6 @@ with tab2:
         if fitting_comments_input != fitting_comments_display:
             update_english_value('fitting_comments', fitting_comments_input)
         
-        # Already Sent top sample to office?
         st.markdown(f"**{get_text('top_sample_sent')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2191,7 +2008,6 @@ with tab2:
         if top_sample_comments_input != top_sample_comments_display:
             update_english_value('top_sample_comments', top_sample_comments_input)
         
-        # Tech Comments Completed
         st.markdown(f"**{get_text('tech_comments_completed')}**")
         col1, col2 = st.columns(2)
         with col1:
@@ -2212,7 +2028,6 @@ with tab2:
             update_english_value('tech_comments_description', tech_comments_description_input)
 
 with tab3:
-    # Test Results
     st.markdown(f"""
     <div class="section-header">
         <span class="section-header-icon">{ICONS["test_results"]}</span>
@@ -2225,7 +2040,6 @@ with tab3:
     with col_left:
         st.markdown(f"#### {ICONS['test']} {get_text('test_results')}")
         
-        # Sole Bonding
         st.markdown(f"**{get_text('sole_bonding')}**")
         sole_bonding_result_display = get_display_value('sole_bonding_result')
         sole_bonding_result_input = st.text_input(
@@ -2244,7 +2058,6 @@ with tab3:
         with col_fail:
             sole_bonding_fail = st.checkbox("FAIL", key="sole_bonding_fail")
         
-        # Top piece attachment strength
         st.markdown(f"**{get_text('top_piece')}**")
         top_piece_result_display = get_display_value('top_piece_result')
         top_piece_result_input = st.text_input(
@@ -2263,7 +2076,6 @@ with tab3:
         with col_fail:
             top_piece_fail = st.checkbox("FAIL", key="top_piece_fail")
         
-        # Strength of Straps & buckle
         st.markdown(f"**{get_text('straps_strength')}**")
         straps_strength_result_display = get_display_value('straps_strength_result')
         straps_strength_result_input = st.text_input(
@@ -2285,7 +2097,6 @@ with tab3:
     with col_right:
         st.markdown(f"#### {ICONS['test']} {get_text('test_results')}")
         
-        # Heel Attachment
         st.markdown(f"**{get_text('heel_attachment')}**")
         heel_attachment_result_display = get_display_value('heel_attachment_result')
         heel_attachment_result_input = st.text_input(
@@ -2304,7 +2115,6 @@ with tab3:
         with col_fail:
             heel_attachment_fail = st.checkbox("FAIL", key="heel_attachment_fail")
         
-        # Insole Perment set at 400N
         st.markdown(f"**{get_text('insole_perment')}**")
         insole_perment_result_display = get_display_value('insole_perment_result')
         insole_perment_result_input = st.text_input(
@@ -2323,7 +2133,6 @@ with tab3:
         with col_fail:
             insole_perment_fail = st.checkbox("FAIL", key="insole_perment_fail")
         
-        # Toe Post Attachment
         st.markdown(f"**{get_text('toe_post')}**")
         toe_post_result_display = get_display_value('toe_post_result')
         toe_post_result_input = st.text_input(
@@ -2342,7 +2151,6 @@ with tab3:
         with col_fail:
             toe_post_fail = st.checkbox("FAIL", key="toe_post_fail")
     
-    # Issues & Solutions
     st.markdown(f"""
     <div class="section-header">
         <span class="section-header-icon">{ICONS["issues_solutions"]}</span>
@@ -2377,7 +2185,6 @@ with tab3:
             update_english_value('batch_test_issues', batch_test_issues_input)
 
 with tab4:
-    # Signatures
     st.markdown(f"""
     <div class="section-header">
         <span class="section-header-icon">{ICONS["signatures"]}</span>
@@ -2387,7 +2194,6 @@ with tab4:
     
     col1, col2 = st.columns(2)
     with col1:
-        # Factory Representative
         factory_representative_display = get_display_value('factory_representative')
         factory_representative_input = st.text_input(
             f"{ICONS['factory']} {get_text('factory_rep')}",
@@ -2398,7 +2204,6 @@ with tab4:
         if factory_representative_input != factory_representative_display:
             update_english_value('factory_representative', factory_representative_input)
         
-        # GS QC
         gs_qc_display = get_display_value('gs_qc')
         gs_qc_input = st.text_input(
             f"{ICONS['qc']} {get_text('gs_qc')}",
@@ -2409,7 +2214,6 @@ with tab4:
         if gs_qc_input != gs_qc_display:
             update_english_value('gs_qc', gs_qc_input)
         
-        # Area Manager
         area_manager_display = get_display_value('area_manager')
         area_manager_input = st.text_input(
             f"{ICONS['tech']} {get_text('area_manager')}",
@@ -2421,7 +2225,6 @@ with tab4:
             update_english_value('area_manager', area_manager_input)
     
     with col2:
-        # Grand Step Technician
         grandstep_technician_display = get_display_value('grandstep_technician')
         grandstep_technician_input = st.text_input(
             f"{ICONS['tech']} {get_text('gs_tech')}",
@@ -2432,7 +2235,6 @@ with tab4:
         if grandstep_technician_input != grandstep_technician_display:
             update_english_value('grandstep_technician', grandstep_technician_input)
         
-        # QA Manager
         qa_manager_display = get_display_value('qa_manager')
         qa_manager_input = st.text_input(
             f"{ICONS['qc']} {get_text('qa_manager')}",
@@ -2449,7 +2251,6 @@ with tab4:
             key="signature_date"
         )
     
-    # Disclaimer
     st.markdown(f"""
     <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-top: 20px;'>
         <strong>{get_text('disclaimer')}:</strong> {get_text('disclaimer_text')}
@@ -2469,7 +2270,6 @@ with col2:
                     pdf_buffer = generate_pdf()
                     st.success(f"{ICONS['success']} {get_text('generate_success')}")
                     
-                    # Display PDF preview info
                     with st.expander(f"{ICONS['info']} {get_text('pdf_details')}"):
                         col_info1, col_info2 = st.columns(2)
                         with col_info1:
@@ -2480,7 +2280,6 @@ with col2:
                             current_time = datetime.now(china_tz)
                             st.metric(get_text("generated"), current_time.strftime('%H:%M:%S'))
                     
-                    # Download button
                     filename = f"DieCut_Test_{st.session_state.english_values.get('contract_no', '')}_{selected_city}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                     st.download_button(
                         label=f"{ICONS['download']} {get_text('download_pdf')}",
