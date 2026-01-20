@@ -205,6 +205,42 @@ if 'pdf_language' not in st.session_state:
     st.session_state.pdf_language = "en"
 if 'selected_city' not in st.session_state:
     st.session_state.selected_city = "Shanghai"
+if 'translation_cache' not in st.session_state:
+    st.session_state.translation_cache = {}
+if 'english_values' not in st.session_state:
+    st.session_state.english_values = {
+        'contract_no': '',
+        'brand': '',
+        'agent_factory': '',
+        'style_name': '',
+        'qty': '',
+        'sales': '',
+        'factory_style': '',
+        'size': '',
+        'die_qty': '',
+        'batch_qty': '',
+        'last_no_comments': '',
+        'color_comments': '',
+        'tack_free_comments': '',
+        'tech_specs_comments': '',
+        'size_run_comments': '',
+        'fitting_comments': '',
+        'top_sample_comments': '',
+        'tech_comments_description': '',
+        'sole_bonding_result': '',
+        'top_piece_result': '',
+        'straps_strength_result': '',
+        'heel_attachment_result': '',
+        'insole_perment_result': '',
+        'toe_post_result': '',
+        'die_cut_issues': '',
+        'batch_test_issues': '',
+        'factory_representative': '',
+        'gs_qc': '',
+        'grandstep_technician': '',
+        'area_manager': '',
+        'qa_manager': ''
+    }
 
 # SEPARATE TEXT DICTIONARIES
 ENGLISH_TEXTS = {
@@ -381,6 +417,65 @@ def get_pdf_text(key, pdf_language):
         return MANDARIN_TEXTS.get(key, key)
     else:
         return ENGLISH_TEXTS.get(key, key)
+
+def translate_text_with_openai(text, target_language):
+    """Translate text using OpenAI with caching"""
+    if not text or text.strip() == "":
+        return text
+    
+    # Check cache
+    cache_key = (text, target_language)
+    if cache_key in st.session_state.translation_cache:
+        return st.session_state.translation_cache[cache_key]
+    
+    # Map language codes to OpenAI format
+    if target_language == "zh":
+        target_lang_name = "Simplified Chinese"
+    else:
+        target_lang_name = "English"
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"Translate this to {target_lang_name}. Return ONLY the translation:\n\n{text}"
+            }],
+            max_tokens=500,
+            temperature=0.1
+        )
+        translated = response.choices[0].message.content.strip()
+        st.session_state.translation_cache[cache_key] = translated
+        return translated
+    except Exception as e:
+        # If OpenAI fails, return original text
+        return text
+
+def get_display_value(field_key):
+    """Get value for display based on current UI language"""
+    english_value = st.session_state.get(field_key, '')
+    if not english_value:
+        return ''
+    
+    if st.session_state.ui_language == "en":
+        return english_value
+    else:
+        # Translate to Mandarin for display
+        return translate_text_with_openai(english_value, "zh")
+
+def update_english_value(field_key, displayed_value):
+    """Update the English value based on user input"""
+    if not displayed_value or displayed_value.strip() == "":
+        st.session_state[field_key] = ''
+        return
+    
+    if st.session_state.ui_language == "en":
+        # User entered text in English, store directly
+        st.session_state[field_key] = displayed_value.strip()
+    else:
+        # User entered text in Mandarin, translate to English for storage
+        english_text = translate_text_with_openai(displayed_value.strip(), "en")
+        st.session_state[field_key] = english_text
 
 # ENHANCED PDF Generation with proper Chinese support
 class DieCutPDF(SimpleDocTemplate):
@@ -813,6 +908,16 @@ def generate_pdf():
     factory_style_val = st.session_state.get('factory_style', '') or ''
     ship_date_val = st.session_state.get('ship_date', current_time)
     
+    # For PDF, get English values and translate if needed
+    if pdf_lang == "zh":
+        contract_no_val = translate_text_with_openai(contract_no_val, "zh")
+        brand_val = translate_text_with_openai(brand_val, "zh")
+        agent_factory_val = translate_text_with_openai(agent_factory_val, "zh")
+        style_name_val = translate_text_with_openai(style_name_val, "zh")
+        qty_val = translate_text_with_openai(qty_val, "zh")
+        sales_val = translate_text_with_openai(sales_val, "zh")
+        factory_style_val = translate_text_with_openai(factory_style_val, "zh")
+    
     # Create a cleaner table layout with pure language
     basic_data = []
     
@@ -886,6 +991,12 @@ def generate_pdf():
     die_qty_val = st.session_state.get('die_qty', '') or ''
     batch_qty_val = st.session_state.get('batch_qty', '') or ''
     
+    # Translate for Chinese PDF
+    if pdf_lang == "zh":
+        size_val = translate_text_with_openai(size_val, "zh")
+        die_qty_val = translate_text_with_openai(die_qty_val, "zh")
+        batch_qty_val = translate_text_with_openai(batch_qty_val, "zh")
+    
     size_label = get_pdf_text("size", pdf_lang)
     die_qty_label = get_pdf_text("die_qty", pdf_lang)
     batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
@@ -946,6 +1057,10 @@ def generate_pdf():
         no_check = "✓" if st.session_state.get(no_key, False) else ""
         comment = st.session_state.get(comment_key, '') or ''
         
+        # Translate comment for Chinese PDF
+        if pdf_lang == "zh" and comment and comment != "-":
+            comment = translate_text_with_openai(comment, "zh")
+        
         row = [
             create_paragraph(item, table_cell_style),
             create_paragraph(yes_check, table_cell_center_style),
@@ -983,6 +1098,10 @@ def generate_pdf():
     # Tech specs comparison with better styling
     same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
     tech_specs_comments_val = st.session_state.get('tech_specs_comments', '') or ''
+    
+    # Translate for Chinese PDF
+    if pdf_lang == "zh" and tech_specs_comments_val and tech_specs_comments_val != "-":
+        tech_specs_comments_val = translate_text_with_openai(tech_specs_comments_val, "zh")
     
     same_label = get_pdf_text("same", pdf_lang)
     if_not_label = get_pdf_text("if_not_same", pdf_lang)
@@ -1026,6 +1145,10 @@ def generate_pdf():
     tech_comments_yes = "✓" if st.session_state.get('tech_comments_yes', False) else ""
     tech_comments_no = "✓" if st.session_state.get('tech_comments_no', False) else ""
     tech_comments_desc = st.session_state.get('tech_comments_description', '') or ''
+    
+    # Translate for Chinese PDF
+    if pdf_lang == "zh" and tech_comments_desc and tech_comments_desc != "-":
+        tech_comments_desc = translate_text_with_openai(tech_comments_desc, "zh")
     
     yes_label = get_pdf_text("yes", pdf_lang)
     no_label = get_pdf_text("no", pdf_lang)
@@ -1109,6 +1232,11 @@ def generate_pdf():
     
     for item, result_key, pass_key, fail_key, standard in test_items:
         result = st.session_state.get(result_key, '') or ''
+        
+        # Translate result for Chinese PDF
+        if pdf_lang == "zh" and result and result != "-":
+            result = translate_text_with_openai(result, "zh")
+        
         pass_check = st.session_state.get(pass_key, False)
         fail_check = st.session_state.get(fail_key, False)
         
@@ -1157,8 +1285,13 @@ def generate_pdf():
     die_cut_issues = st.session_state.get('die_cut_issues', '') or ''
     batch_test_issues = st.session_state.get('batch_test_issues', '') or ''
     
+    # Translate for Chinese PDF
     if pdf_lang == "zh":
         no_issues_text = "无问题报告"
+        if die_cut_issues:
+            die_cut_issues = translate_text_with_openai(die_cut_issues, "zh")
+        if batch_test_issues:
+            batch_test_issues = translate_text_with_openai(batch_test_issues, "zh")
     else:
         no_issues_text = "No issues reported"
     
@@ -1261,6 +1394,10 @@ def generate_pdf():
     for label, key, date_label in signatures:
         value = st.session_state.get(key, '') or ''
         
+        # Translate for Chinese PDF
+        if pdf_lang == "zh" and value:
+            value = translate_text_with_openai(value, "zh")
+        
         sig_row = [
             create_paragraph(label, table_cell_bold_style, bold=True),
             create_paragraph(value if value else "___________________", 
@@ -1349,7 +1486,12 @@ with st.sidebar:
         index=0 if st.session_state.ui_language == "en" else 1,
         key="ui_lang_select"
     )
-    st.session_state.ui_language = "en" if ui_language == "English" else "zh"
+    
+    # Update UI language and rerun if changed
+    new_ui_lang = "en" if ui_language == "English" else "zh"
+    if new_ui_lang != st.session_state.ui_language:
+        st.session_state.ui_language = new_ui_lang
+        st.rerun()
     
     # PDF Language (separate from UI)
     pdf_language = st.selectbox(
@@ -1438,66 +1580,120 @@ with tab1:
             key="batch_test_date"
         )
     
-    # Main info
+    # Main info - CUSTOM TEXT INPUTS WITH TRANSLATION
     col1, col2 = st.columns(2)
     with col1:
-        contract_no = st.text_input(
+        # Contract No.
+        contract_no_display = get_display_value('contract_no')
+        contract_no_input = st.text_input(
             f"{ICONS['info']} {get_text('contract_no')}", 
+            value=contract_no_display,
             placeholder="CON-2024-001",
-            key="contract_no"
+            key="contract_no_input"
         )
-        style_name = st.text_input(
+        if contract_no_input != contract_no_display:
+            update_english_value('contract_no', contract_no_input)
+        
+        # Style Name
+        style_name_display = get_display_value('style_name')
+        style_name_input = st.text_input(
             f"{ICONS['style']} {get_text('style_name')}", 
+            value=style_name_display,
             placeholder="STYLE-2024-001",
-            key="style_name"
+            key="style_name_input"
         )
-        factory_style = st.text_input(
+        if style_name_input != style_name_display:
+            update_english_value('style_name', style_name_input)
+        
+        # Factory Style
+        factory_style_display = get_display_value('factory_style')
+        factory_style_input = st.text_input(
             f"{ICONS['factory']} {get_text('factory_style')}", 
+            value=factory_style_display,
             placeholder="FAC-STYLE-001",
-            key="factory_style"
+            key="factory_style_input"
         )
-        size = st.text_input(
+        if factory_style_input != factory_style_display:
+            update_english_value('factory_style', factory_style_input)
+        
+        # Size
+        size_display = get_display_value('size')
+        size_input = st.text_input(
             f"{ICONS['measure']} {get_text('size')}", 
+            value=size_display,
             placeholder="US 8, EU 41, UK 7",
-            key="size"
+            key="size_input"
         )
+        if size_input != size_display:
+            update_english_value('size', size_input)
     
     with col2:
-        brand = st.text_input(
+        # Brand
+        brand_display = get_display_value('brand')
+        brand_input = st.text_input(
             f"{ICONS['brand']} {get_text('brand')}", 
+            value=brand_display,
             placeholder="Brand Name",
-            key="brand"
+            key="brand_input"
         )
-        qty = st.text_input(
+        if brand_input != brand_display:
+            update_english_value('brand', brand_input)
+        
+        # Qty
+        qty_display = get_display_value('qty')
+        qty_input = st.text_input(
             f"{ICONS['quantity']} {get_text('qty')}", 
+            value=qty_display,
             placeholder="1000 pairs",
-            key="qty"
+            key="qty_input"
         )
-        agent_factory = st.text_input(
+        if qty_input != qty_display:
+            update_english_value('qty', qty_input)
+        
+        # Agent and Factory
+        agent_factory_display = get_display_value('agent_factory')
+        agent_factory_input = st.text_input(
             f"{ICONS['factory']} {get_text('agent_factory')}", 
+            value=agent_factory_display,
             placeholder="Agent & Factory Name",
-            key="agent_factory"
+            key="agent_factory_input"
         )
-        sales = st.text_input(
+        if agent_factory_input != agent_factory_display:
+            update_english_value('agent_factory', agent_factory_input)
+        
+        # Sales
+        sales_display = get_display_value('sales')
+        sales_input = st.text_input(
             f"{ICONS['sales']} {get_text('sales')}", 
+            value=sales_display,
             placeholder="Sales Representative",
-            key="sales"
+            key="sales_input"
         )
+        if sales_input != sales_display:
+            update_english_value('sales', sales_input)
     
     # Quantity and Ship Date
     col1, col2, col3 = st.columns(3)
     with col1:
-        die_qty = st.text_input(
+        die_qty_display = get_display_value('die_qty')
+        die_qty_input = st.text_input(
             f"{ICONS['quantity']} {get_text('die_qty')}", 
+            value=die_qty_display,
             placeholder="50 pairs",
-            key="die_qty"
+            key="die_qty_input"
         )
+        if die_qty_input != die_qty_display:
+            update_english_value('die_qty', die_qty_input)
     with col2:
-        batch_qty = st.text_input(
+        batch_qty_display = get_display_value('batch_qty')
+        batch_qty_input = st.text_input(
             f"{ICONS['quantity']} {get_text('batch_qty')}", 
+            value=batch_qty_display,
             placeholder="200 pairs",
-            key="batch_qty"
+            key="batch_qty_input"
         )
+        if batch_qty_input != batch_qty_display:
+            update_english_value('batch_qty', batch_qty_input)
     with col3:
         ship_date = st.date_input(
             f"{ICONS['calendar']} {get_text('ship_date')}", 
@@ -1526,13 +1722,18 @@ with tab2:
             last_no_yes = st.checkbox(get_text('yes'), key="last_no_yes")
         with col2:
             last_no_no = st.checkbox(get_text('no'), key="last_no_no")
-        last_no_comments = st.text_area(
+        
+        last_no_comments_display = get_display_value('last_no_comments')
+        last_no_comments_input = st.text_area(
             get_text('comments'),
+            value=last_no_comments_display,
             placeholder=f"{get_text('comments')}...",
             height=60,
-            key="last_no_comments",
+            key="last_no_comments_input",
             label_visibility="collapsed"
         )
+        if last_no_comments_input != last_no_comments_display:
+            update_english_value('last_no_comments', last_no_comments_input)
         
         # Color matches cfm sample
         st.markdown(f"**{get_text('color_matches')}**")
@@ -1541,13 +1742,18 @@ with tab2:
             color_yes = st.checkbox(get_text('yes'), key="color_yes")
         with col2:
             color_no = st.checkbox(get_text('no'), key="color_no")
-        color_comments = st.text_area(
+        
+        color_comments_display = get_display_value('color_comments')
+        color_comments_input = st.text_area(
             get_text('comments'),
+            value=color_comments_display,
             placeholder=f"{get_text('comments')}...",
             height=60,
-            key="color_comments",
+            key="color_comments_input",
             label_visibility="collapsed"
         )
+        if color_comments_input != color_comments_display:
+            update_english_value('color_comments', color_comments_input)
         
         # TACK FREE POLICY FOLLOW?
         st.markdown(f"**{get_text('tack_free')}**")
@@ -1556,24 +1762,34 @@ with tab2:
             tack_free_yes = st.checkbox(get_text('yes'), key="tack_free_yes")
         with col2:
             tack_free_no = st.checkbox(get_text('no'), key="tack_free_no")
-        tack_free_comments = st.text_area(
+        
+        tack_free_comments_display = get_display_value('tack_free_comments')
+        tack_free_comments_input = st.text_area(
             get_text('comments'),
+            value=tack_free_comments_display,
             placeholder=f"{get_text('comments')}...",
             height=60,
-            key="tack_free_comments",
+            key="tack_free_comments_input",
             label_visibility="collapsed"
         )
+        if tack_free_comments_input != tack_free_comments_display:
+            update_english_value('tack_free_comments', tack_free_comments_input)
         
         # Tech specifications
         st.markdown(f"**{get_text('tech_specs_compare')}**")
         tech_specs_same = st.checkbox(get_text('same'), key="tech_specs_same")
-        tech_specs_comments = st.text_area(
+        
+        tech_specs_comments_display = get_display_value('tech_specs_comments')
+        tech_specs_comments_input = st.text_area(
             get_text('if_not_same'),
+            value=tech_specs_comments_display,
             placeholder=f"{get_text('if_not_same')}...",
             height=80,
-            key="tech_specs_comments",
+            key="tech_specs_comments_input",
             label_visibility="visible"
         )
+        if tech_specs_comments_input != tech_specs_comments_display:
+            update_english_value('tech_specs_comments', tech_specs_comments_input)
     
     with col_right:
         st.markdown(f"#### {ICONS['check']} {get_text('check_items')}")
@@ -1585,13 +1801,18 @@ with tab2:
             size_run_yes = st.checkbox(get_text('yes'), key="size_run_yes")
         with col2:
             size_run_no = st.checkbox(get_text('no'), key="size_run_no")
-        size_run_comments = st.text_area(
+        
+        size_run_comments_display = get_display_value('size_run_comments')
+        size_run_comments_input = st.text_area(
             get_text('comments'),
+            value=size_run_comments_display,
             placeholder=f"{get_text('comments')}...",
             height=60,
-            key="size_run_comments",
+            key="size_run_comments_input",
             label_visibility="collapsed"
         )
+        if size_run_comments_input != size_run_comments_display:
+            update_english_value('size_run_comments', size_run_comments_input)
         
         # Fitting Correct
         st.markdown(f"**{get_text('fitting_correct')}**")
@@ -1600,13 +1821,18 @@ with tab2:
             fitting_yes = st.checkbox(get_text('yes'), key="fitting_yes")
         with col2:
             fitting_no = st.checkbox(get_text('no'), key="fitting_no")
-        fitting_comments = st.text_area(
+        
+        fitting_comments_display = get_display_value('fitting_comments')
+        fitting_comments_input = st.text_area(
             get_text('comments'),
+            value=fitting_comments_display,
             placeholder=f"{get_text('comments')}...",
             height=60,
-            key="fitting_comments",
+            key="fitting_comments_input",
             label_visibility="collapsed"
         )
+        if fitting_comments_input != fitting_comments_display:
+            update_english_value('fitting_comments', fitting_comments_input)
         
         # Already Sent top sample to office?
         st.markdown(f"**{get_text('top_sample_sent')}**")
@@ -1615,13 +1841,18 @@ with tab2:
             top_sample_yes = st.checkbox(get_text('yes'), key="top_sample_yes")
         with col2:
             top_sample_no = st.checkbox(get_text('no'), key="top_sample_no")
-        top_sample_comments = st.text_area(
+        
+        top_sample_comments_display = get_display_value('top_sample_comments')
+        top_sample_comments_input = st.text_area(
             get_text('comments'),
+            value=top_sample_comments_display,
             placeholder=f"{get_text('comments')}...",
             height=60,
-            key="top_sample_comments",
+            key="top_sample_comments_input",
             label_visibility="collapsed"
         )
+        if top_sample_comments_input != top_sample_comments_display:
+            update_english_value('top_sample_comments', top_sample_comments_input)
         
         # Tech Comments Completed
         st.markdown(f"**{get_text('tech_comments_completed')}**")
@@ -1630,13 +1861,18 @@ with tab2:
             tech_comments_yes = st.checkbox(get_text('yes'), key="tech_comments_yes")
         with col2:
             tech_comments_no = st.checkbox(get_text('no'), key="tech_comments_no")
-        tech_comments_description = st.text_area(
+        
+        tech_comments_description_display = get_display_value('tech_comments_description')
+        tech_comments_description_input = st.text_area(
             get_text('if_not_same'),
+            value=tech_comments_description_display,
             placeholder=f"{get_text('if_not_same')}...",
             height=80,
-            key="tech_comments_description",
+            key="tech_comments_description_input",
             label_visibility="visible"
         )
+        if tech_comments_description_input != tech_comments_description_display:
+            update_english_value('tech_comments_description', tech_comments_description_input)
 
 with tab3:
     # Test Results
@@ -1654,12 +1890,17 @@ with tab3:
         
         # Sole Bonding
         st.markdown(f"**{get_text('sole_bonding')}**")
-        sole_bonding_result = st.text_input(
+        sole_bonding_result_display = get_display_value('sole_bonding_result')
+        sole_bonding_result_input = st.text_input(
             f"{get_text('result')}",
+            value=sole_bonding_result_display,
             placeholder=f"{get_text('result')}...",
-            key="sole_bonding_result",
+            key="sole_bonding_result_input",
             label_visibility="collapsed"
         )
+        if sole_bonding_result_input != sole_bonding_result_display:
+            update_english_value('sole_bonding_result', sole_bonding_result_input)
+        
         col_pass, col_fail = st.columns(2)
         with col_pass:
             sole_bonding_pass = st.checkbox("PASS", key="sole_bonding_pass")
@@ -1668,12 +1909,17 @@ with tab3:
         
         # Top piece attachment strength
         st.markdown(f"**{get_text('top_piece')}**")
-        top_piece_result = st.text_input(
+        top_piece_result_display = get_display_value('top_piece_result')
+        top_piece_result_input = st.text_input(
             f"{get_text('result')}",
+            value=top_piece_result_display,
             placeholder=f"{get_text('result')}...",
-            key="top_piece_result",
+            key="top_piece_result_input",
             label_visibility="collapsed"
         )
+        if top_piece_result_input != top_piece_result_display:
+            update_english_value('top_piece_result', top_piece_result_input)
+        
         col_pass, col_fail = st.columns(2)
         with col_pass:
             top_piece_pass = st.checkbox("PASS", key="top_piece_pass")
@@ -1682,12 +1928,17 @@ with tab3:
         
         # Strength of Straps & buckle
         st.markdown(f"**{get_text('straps_strength')}**")
-        straps_strength_result = st.text_input(
+        straps_strength_result_display = get_display_value('straps_strength_result')
+        straps_strength_result_input = st.text_input(
             f"{get_text('result')}",
+            value=straps_strength_result_display,
             placeholder=f"{get_text('result')}...",
-            key="straps_strength_result",
+            key="straps_strength_result_input",
             label_visibility="collapsed"
         )
+        if straps_strength_result_input != straps_strength_result_display:
+            update_english_value('straps_strength_result', straps_strength_result_input)
+        
         col_pass, col_fail = st.columns(2)
         with col_pass:
             straps_strength_pass = st.checkbox("PASS", key="straps_strength_pass")
@@ -1699,12 +1950,17 @@ with tab3:
         
         # Heel Attachment
         st.markdown(f"**{get_text('heel_attachment')}**")
-        heel_attachment_result = st.text_input(
+        heel_attachment_result_display = get_display_value('heel_attachment_result')
+        heel_attachment_result_input = st.text_input(
             f"{get_text('result')}",
+            value=heel_attachment_result_display,
             placeholder=f"{get_text('result')}...",
-            key="heel_attachment_result",
+            key="heel_attachment_result_input",
             label_visibility="collapsed"
         )
+        if heel_attachment_result_input != heel_attachment_result_display:
+            update_english_value('heel_attachment_result', heel_attachment_result_input)
+        
         col_pass, col_fail = st.columns(2)
         with col_pass:
             heel_attachment_pass = st.checkbox("PASS", key="heel_attachment_pass")
@@ -1713,12 +1969,17 @@ with tab3:
         
         # Insole Perment set at 400N
         st.markdown(f"**{get_text('insole_perment')}**")
-        insole_perment_result = st.text_input(
+        insole_perment_result_display = get_display_value('insole_perment_result')
+        insole_perment_result_input = st.text_input(
             f"{get_text('result')}",
+            value=insole_perment_result_display,
             placeholder=f"{get_text('result')}...",
-            key="insole_perment_result",
+            key="insole_perment_result_input",
             label_visibility="collapsed"
         )
+        if insole_perment_result_input != insole_perment_result_display:
+            update_english_value('insole_perment_result', insole_perment_result_input)
+        
         col_pass, col_fail = st.columns(2)
         with col_pass:
             insole_perment_pass = st.checkbox("PASS", key="insole_perment_pass")
@@ -1727,12 +1988,17 @@ with tab3:
         
         # Toe Post Attachment
         st.markdown(f"**{get_text('toe_post')}**")
-        toe_post_result = st.text_input(
+        toe_post_result_display = get_display_value('toe_post_result')
+        toe_post_result_input = st.text_input(
             f"{get_text('result')}",
+            value=toe_post_result_display,
             placeholder=f"{get_text('result')}...",
-            key="toe_post_result",
+            key="toe_post_result_input",
             label_visibility="collapsed"
         )
+        if toe_post_result_input != toe_post_result_display:
+            update_english_value('toe_post_result', toe_post_result_input)
+        
         col_pass, col_fail = st.columns(2)
         with col_pass:
             toe_post_pass = st.checkbox("PASS", key="toe_post_pass")
@@ -1750,20 +2016,28 @@ with tab3:
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"**{get_text('die_cut_test')}**")
-        die_cut_issues = st.text_area(
+        die_cut_issues_display = get_display_value('die_cut_issues')
+        die_cut_issues_input = st.text_area(
             f"{get_text('main_issues')}",
+            value=die_cut_issues_display,
             placeholder=f"{get_text('main_issues')}...",
             height=150,
-            key="die_cut_issues"
+            key="die_cut_issues_input"
         )
+        if die_cut_issues_input != die_cut_issues_display:
+            update_english_value('die_cut_issues', die_cut_issues_input)
     with col2:
         st.markdown(f"**{get_text('batch_test')}**")
-        batch_test_issues = st.text_area(
+        batch_test_issues_display = get_display_value('batch_test_issues')
+        batch_test_issues_input = st.text_area(
             f"{get_text('main_issues')}",
+            value=batch_test_issues_display,
             placeholder=f"{get_text('main_issues')}...",
             height=150,
-            key="batch_test_issues"
+            key="batch_test_issues_input"
         )
+        if batch_test_issues_input != batch_test_issues_display:
+            update_english_value('batch_test_issues', batch_test_issues_input)
 
 with tab4:
     # Signatures
@@ -1776,33 +2050,62 @@ with tab4:
     
     col1, col2 = st.columns(2)
     with col1:
-        factory_representative = st.text_input(
+        # Factory Representative
+        factory_representative_display = get_display_value('factory_representative')
+        factory_representative_input = st.text_input(
             f"{ICONS['factory']} {get_text('factory_rep')}",
+            value=factory_representative_display,
             placeholder=f"{get_text('factory_rep')}...",
-            key="factory_representative"
+            key="factory_representative_input"
         )
-        gs_qc = st.text_input(
+        if factory_representative_input != factory_representative_display:
+            update_english_value('factory_representative', factory_representative_input)
+        
+        # GS QC
+        gs_qc_display = get_display_value('gs_qc')
+        gs_qc_input = st.text_input(
             f"{ICONS['qc']} {get_text('gs_qc')}",
+            value=gs_qc_display,
             placeholder=f"{get_text('gs_qc')}...",
-            key="gs_qc"
+            key="gs_qc_input"
         )
-        area_manager = st.text_input(
+        if gs_qc_input != gs_qc_display:
+            update_english_value('gs_qc', gs_qc_input)
+        
+        # Area Manager
+        area_manager_display = get_display_value('area_manager')
+        area_manager_input = st.text_input(
             f"{ICONS['tech']} {get_text('area_manager')}",
+            value=area_manager_display,
             placeholder=f"{get_text('area_manager')}...",
-            key="area_manager"
+            key="area_manager_input"
         )
+        if area_manager_input != area_manager_display:
+            update_english_value('area_manager', area_manager_input)
     
     with col2:
-        grandstep_technician = st.text_input(
+        # Grand Step Technician
+        grandstep_technician_display = get_display_value('grandstep_technician')
+        grandstep_technician_input = st.text_input(
             f"{ICONS['tech']} {get_text('gs_tech')}",
+            value=grandstep_technician_display,
             placeholder=f"{get_text('gs_tech')}...",
-            key="grandstep_technician"
+            key="grandstep_technician_input"
         )
-        qa_manager = st.text_input(
+        if grandstep_technician_input != grandstep_technician_display:
+            update_english_value('grandstep_technician', grandstep_technician_input)
+        
+        # QA Manager
+        qa_manager_display = get_display_value('qa_manager')
+        qa_manager_input = st.text_input(
             f"{ICONS['qc']} {get_text('qa_manager')}",
+            value=qa_manager_display,
             placeholder=f"{get_text('qa_manager')}...",
-            key="qa_manager"
+            key="qa_manager_input"
         )
+        if qa_manager_input != qa_manager_display:
+            update_english_value('qa_manager', qa_manager_input)
+        
         signature_date = st.date_input(
             f"{ICONS['calendar']} {get_text('signature_date')}",
             datetime.now(),
