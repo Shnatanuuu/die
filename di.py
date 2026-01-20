@@ -1230,105 +1230,50 @@ def generate_pdf():
     
     # ========== SIZE & QUANTITY TABLE ==========
     
-    size_data = st.session_state.size_data
+# ========== SIMPLE SIZE & QUANTITY TABLE (NO CALCULATIONS) ==========
+
+size_data = st.session_state.size_data
+
+if size_data:
+    size_label = get_pdf_text("size", pdf_lang)
+    die_qty_label = get_pdf_text("die_qty", pdf_lang)
+    batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
     
-    if size_data:
-        size_label = get_pdf_text("size", pdf_lang)
-        die_qty_label = get_pdf_text("die_qty", pdf_lang)
-        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
-        total_label = get_pdf_text("total", pdf_lang)
+    # Create table data - just show the values without totals
+    qty_data = [[
+        create_paragraph(size_label, table_header_style, bold=True),
+        create_paragraph(die_qty_label, table_header_style, bold=True),
+        create_paragraph(batch_qty_label, table_header_style, bold=True)
+    ]]
+    
+    for item in size_data:
+        # Just display values as-is, no calculations
+        size_val = item.get('size', '')
+        die_qty_val = item.get('die_qty', '')
+        batch_qty_val = item.get('batch_qty', '')
         
-        # Create table data
-        qty_data = [[
-            create_paragraph(size_label, table_header_style, bold=True),
-            create_paragraph(die_qty_label, table_header_style, bold=True),
-            create_paragraph(batch_qty_label, table_header_style, bold=True)
-        ]]
+        # Convert to string
+        size_display = str(size_val) if size_val not in [None, ''] else '-'
+        die_qty_display = str(die_qty_val) if die_qty_val not in [None, ''] else '-'
+        batch_qty_display = str(batch_qty_val) if batch_qty_val not in [None, ''] else '-'
         
-        total_die_qty = 0
-        total_batch_qty = 0
-        
-        for item in size_data:
-            # Safely get values and convert to string if not None
-            size_val = item.get('size')
-            die_qty_val = item.get('die_qty')
-            batch_qty_val = item.get('batch_qty')
-            
-            # Ensure values are strings for display
-            size_display = str(size_val) if size_val is not None and str(size_val).strip() else '-'
-            die_qty_display = str(die_qty_val) if die_qty_val is not None and str(die_qty_val).strip() else '-'
-            batch_qty_display = str(batch_qty_val) if batch_qty_val is not None and str(batch_qty_val).strip() else '-'
-            
-            # Safely calculate totals using our safe_int_convert function
-            total_die_qty += safe_int_convert(die_qty_val)
-            total_batch_qty += safe_int_convert(batch_qty_val)
-            
-            qty_data.append([
-                create_paragraph(size_display, table_cell_center_style),
-                create_paragraph(die_qty_display, table_cell_center_style),
-                create_paragraph(batch_qty_display, table_cell_center_style)
-            ])
-        
-        # Add total row
         qty_data.append([
-            create_paragraph(f"<b>{total_label}</b>", table_cell_bold_style, bold=True),
-            create_paragraph(str(total_die_qty) if total_die_qty > 0 else '-', table_cell_bold_style, bold=True),
-            create_paragraph(str(total_batch_qty) if total_batch_qty > 0 else '-', table_cell_bold_style, bold=True)
+            create_paragraph(size_display, table_cell_center_style),
+            create_paragraph(die_qty_display, table_cell_center_style),
+            create_paragraph(batch_qty_display, table_cell_center_style)
         ])
-        
-        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
-        qty_table.setStyle(TableStyle([
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('PADDING', (0, 0), (-1, -1), 6),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f4ff')),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ]))
-        elements.append(qty_table)
-    else:
-        # Fallback to simple display if no size data
-        size_label = get_pdf_text("size", pdf_lang)
-        die_qty_label = get_pdf_text("die_qty", pdf_lang)
-        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
-        
-        size_val = get_pdf_display_value('size', pdf_lang)
-        die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
-        batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
-        
-        size_val = str(size_val) if size_val is not None else '-'
-        die_qty_val = str(die_qty_val) if die_qty_val is not None else '-'
-        batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else '-'
-        
-        qty_data = [
-            [
-                create_paragraph(size_label, table_cell_bold_style, bold=True),
-                create_paragraph(die_qty_label, table_cell_bold_style, bold=True),
-                create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
-            ],
-            [
-                create_paragraph(size_val, table_cell_center_style),
-                create_paragraph(die_qty_val, table_cell_center_style),
-                create_paragraph(batch_qty_val, table_cell_center_style)
-            ]
-        ]
-        
-        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
-        qty_table.setStyle(TableStyle([
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('PADDING', (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(qty_table)
     
-    elements.append(Spacer(1, 15))
+    qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+    qty_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(qty_table)
     
     # ========== MAIN CHECK POINTS ==========
     
