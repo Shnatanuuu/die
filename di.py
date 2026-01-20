@@ -750,6 +750,27 @@ class DieCutPDF(SimpleDocTemplate):
         
         canvas.restoreState()
 
+def safe_int_convert(value, default=0):
+    """Safely convert value to integer, handling None and empty strings"""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        value = value.strip()
+        if value == "":
+            return default
+        try:
+            # Try to extract numbers from string
+            numbers = re.findall(r'\d+', value)
+            if numbers:
+                return int(numbers[0])
+            return default
+        except (ValueError, TypeError):
+            return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
 def generate_pdf():
     """Generate Die Cut Test PDF report with enhanced design"""
     buffer = io.BytesIO()
@@ -1174,14 +1195,9 @@ def generate_pdf():
             die_qty_val = str(item.get('die_qty', '')).strip() if item.get('die_qty') else ''
             batch_qty_val = str(item.get('batch_qty', '')).strip() if item.get('batch_qty') else ''
             
-            # Calculate totals if values are numeric
-            try:
-                if die_qty_val:
-                    total_die_qty += int(die_qty_val)
-                if batch_qty_val:
-                    total_batch_qty += int(batch_qty_val)
-            except (ValueError, TypeError):
-                pass
+            # Safely calculate totals
+            total_die_qty += safe_int_convert(die_qty_val)
+            total_batch_qty += safe_int_convert(batch_qty_val)
             
             qty_data.append([
                 create_paragraph(size_val if size_val else '-', table_cell_center_style),
