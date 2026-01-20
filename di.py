@@ -394,8 +394,18 @@ class DieCutPDF(SimpleDocTemplate):
         """Add header to first page"""
         canvas.saveState()
         
-        # Company header at top center
-        canvas.setFont('Helvetica-Bold', 14)
+        # Set font based on language
+        if self.pdf_language == "zh":
+            # Register Chinese font if available
+            try:
+                # Try to load a Chinese font (you need to have a Chinese TTF file)
+                # For now, we'll use Helvetica for English and fallback for Chinese
+                canvas.setFont('Helvetica-Bold', 14)
+            except:
+                canvas.setFont('Helvetica-Bold', 14)
+        else:
+            canvas.setFont('Helvetica-Bold', 14)
+            
         canvas.setFillColor(colors.HexColor('#667eea'))
         
         if self.pdf_language == "zh":
@@ -442,8 +452,12 @@ class DieCutPDF(SimpleDocTemplate):
         canvas.setLineWidth(0.5)
         canvas.line(0.5*inch, 0.6*inch, doc.pagesize[0] - 0.5*inch, 0.6*inch)
         
-        # Footer text
-        canvas.setFont('Helvetica', 8)
+        # Footer text - use simpler fonts for Chinese
+        if self.pdf_language == "zh":
+            canvas.setFont('Helvetica', 8)
+        else:
+            canvas.setFont('Helvetica', 8)
+            
         canvas.setFillColor(colors.HexColor('#666666'))
         
         # China timezone for footer
@@ -464,62 +478,23 @@ class DieCutPDF(SimpleDocTemplate):
         
         # Center: Company name
         company_footer = "志途质量检测" if self.pdf_language == "zh" else "Grandstep QC"
-        canvas.setFont('Helvetica-Bold', 8)
+        if self.pdf_language == "zh":
+            canvas.setFont('Helvetica-Bold', 8)
+        else:
+            canvas.setFont('Helvetica-Bold', 8)
         canvas.setFillColor(colors.HexColor('#667eea'))
         canvas.drawCentredString(doc.pagesize[0]/2, 0.3*inch, company_footer)
         
         # Right: Date and page number
-        canvas.setFont('Helvetica', 8)
+        if self.pdf_language == "zh":
+            canvas.setFont('Helvetica', 8)
+        else:
+            canvas.setFont('Helvetica', 8)
         canvas.setFillColor(colors.HexColor('#666666'))
         right_text = f"{date_text} | {page_num_text}"
         canvas.drawRightString(doc.pagesize[0] - 0.5*inch, 0.3*inch, right_text)
         
         canvas.restoreState()
-
-def get_column_widths(pdf_lang):
-    """Get appropriate column widths based on language - FIXED VERSION"""
-    if pdf_lang == "zh":
-        # Chinese text needs wider columns for readability
-        return {
-            'basic_col1': 1.0,   # in inches
-            'basic_col2': 1.5,   # in inches
-            'basic_col3': 1.0,   # in inches
-            'basic_col4': 1.3,   # in inches
-            'basic_col5': 1.0,   # in inches
-            'basic_col6': 1.5,   # in inches
-            'check_col1': 2.5,   # in inches
-            'check_col2': 0.5,   # in inches
-            'check_col3': 0.5,   # in inches
-            'check_col4': 2.0,   # in inches
-            'test_col1': 2.0,    # in inches
-            'test_col2': 1.0,    # in inches
-            'test_col3': 2.0,    # in inches
-            'test_col4': 1.0,    # in inches
-            'signature_col1': 2.2,  # in inches
-            'signature_col2': 2.5,  # in inches
-            'signature_col3': 1.3,  # in inches
-        }
-    else:
-        # English text can use narrower columns
-        return {
-            'basic_col1': 0.9,   # in inches
-            'basic_col2': 1.4,   # in inches
-            'basic_col3': 0.8,   # in inches
-            'basic_col4': 1.2,   # in inches
-            'basic_col5': 0.9,   # in inches
-            'basic_col6': 1.4,   # in inches
-            'check_col1': 2.2,   # in inches
-            'check_col2': 0.4,   # in inches
-            'check_col3': 0.4,   # in inches
-            'check_col4': 2.6,   # in inches
-            'test_col1': 1.8,    # in inches
-            'test_col2': 0.9,    # in inches
-            'test_col3': 1.8,    # in inches
-            'test_col4': 0.9,    # in inches
-            'signature_col1': 2.0,  # in inches
-            'signature_col2': 2.5,  # in inches
-            'signature_col3': 1.5,  # in inches
-        }
 
 def generate_pdf():
     """Generate Die Cut Test PDF report with enhanced design"""
@@ -530,14 +505,11 @@ def generate_pdf():
     chinese_city = CHINESE_CITIES[selected_city]
     pdf_lang = st.session_state.pdf_language
     
-    # Get column widths based on language
-    col_widths = get_column_widths(pdf_lang)
-    
     # Create PDF with better margins
     doc = DieCutPDF(
         buffer, 
         pagesize=A4,
-        topMargin=1.2*inch,  # Increased from 0.8*inch
+        topMargin=1.2*inch,
         bottomMargin=0.8*inch,
         leftMargin=0.6*inch,
         rightMargin=0.6*inch,
@@ -611,31 +583,53 @@ def generate_pdf():
         backColor=primary_color
     )
     
-    # Table cell styles
-    table_cell_style = ParagraphStyle(
-        'TableCell',
-        parent=styles['Normal'],
-        fontSize=9,
-        alignment=TA_LEFT if pdf_lang == "en" else TA_CENTER,  # Chinese text centered
-        fontName='Helvetica',
-        leading=10
-    )
+    # Table cell styles - Use different alignment for Chinese vs English
+    if pdf_lang == "zh":
+        # Chinese text - center aligned for better readability
+        table_cell_style = ParagraphStyle(
+            'TableCell',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_CENTER,
+            fontName='Helvetica',
+            leading=10
+        )
+        
+        table_cell_bold_style = ParagraphStyle(
+            'TableCellBold',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold',
+            leading=10
+        )
+    else:
+        # English text - left aligned
+        table_cell_style = ParagraphStyle(
+            'TableCell',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_LEFT,
+            fontName='Helvetica',
+            leading=10
+        )
+        
+        table_cell_bold_style = ParagraphStyle(
+            'TableCellBold',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_LEFT,
+            fontName='Helvetica-Bold',
+            leading=10
+        )
     
+    # Always center style for checkboxes and numbers
     table_cell_center_style = ParagraphStyle(
         'TableCellCenter',
         parent=styles['Normal'],
         fontSize=9,
         alignment=TA_CENTER,
         fontName='Helvetica',
-        leading=10
-    )
-    
-    table_cell_bold_style = ParagraphStyle(
-        'TableCellBold',
-        parent=styles['Normal'],
-        fontSize=9,
-        alignment=TA_LEFT if pdf_lang == "en" else TA_CENTER,  # Chinese text centered
-        fontName='Helvetica-Bold',
         leading=10
     )
     
@@ -723,7 +717,7 @@ def generate_pdf():
                 textColor=color
             )
             
-        return Paragraph(text, style)
+        return Paragraph(str(text), style)  # Ensure text is string
     
     # ========== REPORT HEADER ==========
     
@@ -755,31 +749,38 @@ def generate_pdf():
     
     die_cut_text = get_pdf_text("die_cut_test", pdf_lang)
     batches_text = get_pdf_text("batch_test", pdf_lang)
-    date_text = get_pdf_text("signature_date", pdf_lang)
     
     # Create test date header with pure language
     if pdf_lang == "zh":
+        # Format dates in Chinese style
+        die_cut_date_str = die_cut_date.strftime('%Y年%m月%d日') if hasattr(die_cut_date, 'strftime') else str(die_cut_date)
+        batch_test_date_str = batch_test_date.strftime('%Y年%m月%d日') if hasattr(batch_test_date, 'strftime') else str(batch_test_date)
+        
         test_header_data = [
             [
                 create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
                 create_paragraph(":", small_bold_style),
-                create_paragraph(die_cut_date.strftime('%Y年%m月%d日') if hasattr(die_cut_date, 'strftime') else str(die_cut_date), small_bold_style),
+                create_paragraph(die_cut_date_str, small_bold_style),
                 create_paragraph("", small_style),
                 create_paragraph(batches_text, table_cell_bold_style, bold=True),
                 create_paragraph(":", small_bold_style),
-                create_paragraph(batch_test_date.strftime('%Y年%m月%d日') if hasattr(batch_test_date, 'strftime') else str(batch_test_date), small_bold_style)
+                create_paragraph(batch_test_date_str, small_bold_style)
             ]
         ]
     else:
+        # Format dates in English style
+        die_cut_date_str = die_cut_date.strftime('%Y-%m-%d') if hasattr(die_cut_date, 'strftime') else str(die_cut_date)
+        batch_test_date_str = batch_test_date.strftime('%Y-%m-%d') if hasattr(batch_test_date, 'strftime') else str(batch_test_date)
+        
         test_header_data = [
             [
                 create_paragraph(die_cut_text, table_cell_bold_style, bold=True),
                 create_paragraph(":", small_bold_style),
-                create_paragraph(die_cut_date.strftime('%Y-%m-%d') if hasattr(die_cut_date, 'strftime') else str(die_cut_date), small_bold_style),
+                create_paragraph(die_cut_date_str, small_bold_style),
                 create_paragraph("", small_style),
                 create_paragraph(batches_text, table_cell_bold_style, bold=True),
                 create_paragraph(":", small_bold_style),
-                create_paragraph(batch_test_date.strftime('%Y-%m-%d') if hasattr(batch_test_date, 'strftime') else str(batch_test_date), small_bold_style)
+                create_paragraph(batch_test_date_str, small_bold_style)
             ]
         ]
     
@@ -802,15 +803,15 @@ def generate_pdf():
     basic_info_title = create_paragraph(get_pdf_text("basic_info", pdf_lang), section_header_style, bold=True)
     elements.append(basic_info_title)
     
-    # Get values
-    contract_no_val = st.session_state.get('contract_no', '')
-    brand_val = st.session_state.get('brand', '')
-    agent_factory_val = st.session_state.get('agent_factory', '')
-    style_name_val = st.session_state.get('style_name', '')
-    qty_val = st.session_state.get('qty', '')
-    sales_val = st.session_state.get('sales', '')
-    factory_style_val = st.session_state.get('factory_style', '')
-    ship_date_val = st.session_state.get('ship_date', '')
+    # Get values - ensure they are not None
+    contract_no_val = st.session_state.get('contract_no', '') or ''
+    brand_val = st.session_state.get('brand', '') or ''
+    agent_factory_val = st.session_state.get('agent_factory', '') or ''
+    style_name_val = st.session_state.get('style_name', '') or ''
+    qty_val = st.session_state.get('qty', '') or ''
+    sales_val = st.session_state.get('sales', '') or ''
+    factory_style_val = st.session_state.get('factory_style', '') or ''
+    ship_date_val = st.session_state.get('ship_date', current_time)
     
     # Create a cleaner table layout with pure language
     basic_data = []
@@ -861,15 +862,14 @@ def generate_pdf():
         create_paragraph("", table_cell_style)
     ])
     
-    basic_table = Table(basic_data, colWidths=[
-    col_widths['basic_col1'] * inch,  # ADD * inch here
-    col_widths['basic_col2'] * inch,  # ADD * inch here
-    col_widths['basic_col3'] * inch,  # ADD * inch here
-    col_widths['basic_col4'] * inch,  # ADD * inch here
-    col_widths['basic_col5'] * inch,  # ADD * inch here
-    col_widths['basic_col6'] * inch,  # ADD * inch here
-])
-
+    # Use different column widths based on language
+    if pdf_lang == "zh":
+        # Chinese needs wider columns
+        basic_table = Table(basic_data, colWidths=[1.0*inch, 1.5*inch, 1.0*inch, 1.3*inch, 1.0*inch, 1.5*inch])
+    else:
+        # English can use narrower columns
+        basic_table = Table(basic_data, colWidths=[0.9*inch, 1.4*inch, 0.8*inch, 1.2*inch, 0.9*inch, 1.4*inch])
+    
     basic_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -882,9 +882,9 @@ def generate_pdf():
     
     # ========== QUANTITY INFORMATION ==========
     
-    size_val = st.session_state.get('size', '')
-    die_qty_val = st.session_state.get('die_qty', '')
-    batch_qty_val = st.session_state.get('batch_qty', '')
+    size_val = st.session_state.get('size', '') or ''
+    die_qty_val = st.session_state.get('die_qty', '') or ''
+    batch_qty_val = st.session_state.get('batch_qty', '') or ''
     
     size_label = get_pdf_text("size", pdf_lang)
     die_qty_label = get_pdf_text("die_qty", pdf_lang)
@@ -944,7 +944,7 @@ def generate_pdf():
     for item, yes_key, no_key, comment_key in check_items:
         yes_check = "✓" if st.session_state.get(yes_key, False) else ""
         no_check = "✓" if st.session_state.get(no_key, False) else ""
-        comment = st.session_state.get(comment_key, '')
+        comment = st.session_state.get(comment_key, '') or ''
         
         row = [
             create_paragraph(item, table_cell_style),
@@ -954,12 +954,14 @@ def generate_pdf():
         ]
         check_data.append(row)
     
-   check_table = Table(check_data, colWidths=[
-    col_widths['check_col1'] * inch,  # ADD * inch
-    col_widths['check_col2'] * inch,  # ADD * inch
-    col_widths['check_col3'] * inch,  # ADD * inch
-    col_widths['check_col4'] * inch,  # ADD * inch
-])
+    # Use different column widths based on language
+    if pdf_lang == "zh":
+        # Chinese needs wider columns
+        check_table = Table(check_data, colWidths=[2.5*inch, 0.5*inch, 0.5*inch, 2.0*inch])
+    else:
+        # English can use narrower columns
+        check_table = Table(check_data, colWidths=[2.2*inch, 0.4*inch, 0.4*inch, 2.6*inch])
+    
     check_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
@@ -980,7 +982,7 @@ def generate_pdf():
     
     # Tech specs comparison with better styling
     same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
-    tech_specs_comments_val = st.session_state.get('tech_specs_comments', '')
+    tech_specs_comments_val = st.session_state.get('tech_specs_comments', '') or ''
     
     same_label = get_pdf_text("same", pdf_lang)
     if_not_label = get_pdf_text("if_not_same", pdf_lang)
@@ -1023,7 +1025,7 @@ def generate_pdf():
     
     tech_comments_yes = "✓" if st.session_state.get('tech_comments_yes', False) else ""
     tech_comments_no = "✓" if st.session_state.get('tech_comments_no', False) else ""
-    tech_comments_desc = st.session_state.get('tech_comments_description', '')
+    tech_comments_desc = st.session_state.get('tech_comments_description', '') or ''
     
     yes_label = get_pdf_text("yes", pdf_lang)
     no_label = get_pdf_text("no", pdf_lang)
@@ -1106,7 +1108,7 @@ def generate_pdf():
         ]
     
     for item, result_key, pass_key, fail_key, standard in test_items:
-        result = st.session_state.get(result_key, '')
+        result = st.session_state.get(result_key, '') or ''
         pass_check = st.session_state.get(pass_key, False)
         fail_check = st.session_state.get(fail_key, False)
         
@@ -1125,12 +1127,14 @@ def generate_pdf():
         ]
         test_data.append(row)
     
-    test_table = Table(test_data, colWidths=[
-    col_widths['test_col1'] * inch,  # ADD * inch
-    col_widths['test_col2'] * inch,  # ADD * inch
-    col_widths['test_col3'] * inch,  # ADD * inch
-    col_widths['test_col4'] * inch,  # ADD * inch
-])
+    # Use different column widths based on language
+    if pdf_lang == "zh":
+        # Chinese needs wider columns
+        test_table = Table(test_data, colWidths=[2.0*inch, 1.0*inch, 2.0*inch, 1.0*inch])
+    else:
+        # English can use narrower columns
+        test_table = Table(test_data, colWidths=[1.8*inch, 0.9*inch, 1.8*inch, 0.9*inch])
+    
     test_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
@@ -1150,8 +1154,8 @@ def generate_pdf():
     elements.append(issues_title)
     
     # Two-column layout for issues
-    die_cut_issues = st.session_state.get('die_cut_issues', '')
-    batch_test_issues = st.session_state.get('batch_test_issues', '')
+    die_cut_issues = st.session_state.get('die_cut_issues', '') or ''
+    batch_test_issues = st.session_state.get('batch_test_issues', '') or ''
     
     if pdf_lang == "zh":
         no_issues_text = "无问题报告"
@@ -1255,7 +1259,7 @@ def generate_pdf():
     
     # Signature rows
     for label, key, date_label in signatures:
-        value = st.session_state.get(key, '')
+        value = st.session_state.get(key, '') or ''
         
         sig_row = [
             create_paragraph(label, table_cell_bold_style, bold=True),
@@ -1271,11 +1275,11 @@ def generate_pdf():
         sig_data.append(sig_row)
     
     # Create signature table with professional styling
-    signatures_table = Table(sig_data, colWidths=[
-    col_widths['signature_col1'] * inch,  # ADD * inch
-    col_widths['signature_col2'] * inch,  # ADD * inch
-    col_widths['signature_col3'] * inch,  # ADD * inch
-])
+    if pdf_lang == "zh":
+        signatures_table = Table(sig_data, colWidths=[2.2*inch, 2.5*inch, 1.3*inch])
+    else:
+        signatures_table = Table(sig_data, colWidths=[2.0*inch, 2.5*inch, 1.5*inch])
+    
     signatures_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
