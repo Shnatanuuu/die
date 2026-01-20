@@ -440,18 +440,33 @@ def safe_int_convert(value, default=0):
     """Safely convert value to integer, handling None and empty strings"""
     if value is None:
         return default
+    
+    # If it's already an integer or float, convert to int
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+    
+    # If it's a string, try to extract numbers
     if isinstance(value, str):
         value = value.strip()
         if value == "":
             return default
+        
+        # Try to extract the first number from the string
         try:
-            # Try to extract numbers from string
-            numbers = re.findall(r'\d+', value)
-            if numbers:
-                return int(numbers[0])
+            # Remove commas and other non-numeric characters (except decimal point)
+            cleaned = ''.join(c for c in value if c.isdigit() or c in '.-')
+            if cleaned:
+                # Try to convert to float first, then int
+                num = float(cleaned)
+                return int(num)
             return default
         except (ValueError, TypeError):
             return default
+    
+    # For any other type, try direct conversion
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -1203,18 +1218,24 @@ def generate_pdf():
         total_batch_qty = 0
         
         for item in size_data:
-            size_val = str(item.get('size', '')).strip() if item.get('size') else ''
-            die_qty_val = str(item.get('die_qty', '')).strip() if item.get('die_qty') else ''
-            batch_qty_val = str(item.get('batch_qty', '')).strip() if item.get('batch_qty') else ''
+            # Safely get values and convert to string if not None
+            size_val = item.get('size')
+            die_qty_val = item.get('die_qty')
+            batch_qty_val = item.get('batch_qty')
             
-            # Safely calculate totals
+            # Ensure values are strings for display
+            size_display = str(size_val) if size_val is not None and str(size_val).strip() else '-'
+            die_qty_display = str(die_qty_val) if die_qty_val is not None and str(die_qty_val).strip() else '-'
+            batch_qty_display = str(batch_qty_val) if batch_qty_val is not None and str(batch_qty_val).strip() else '-'
+            
+            # Safely calculate totals using our safe_int_convert function
             total_die_qty += safe_int_convert(die_qty_val)
             total_batch_qty += safe_int_convert(batch_qty_val)
             
             qty_data.append([
-                create_paragraph(size_val if size_val else '-', table_cell_center_style),
-                create_paragraph(die_qty_val if die_qty_val else '-', table_cell_center_style),
-                create_paragraph(batch_qty_val if batch_qty_val else '-', table_cell_center_style)
+                create_paragraph(size_display, table_cell_center_style),
+                create_paragraph(die_qty_display, table_cell_center_style),
+                create_paragraph(batch_qty_display, table_cell_center_style)
             ])
         
         # Add total row
@@ -1247,9 +1268,9 @@ def generate_pdf():
         die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
         batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
         
-        size_val = str(size_val) if size_val is not None else ''
-        die_qty_val = str(die_qty_val) if die_qty_val is not None else ''
-        batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else ''
+        size_val = str(size_val) if size_val is not None else '-'
+        die_qty_val = str(die_qty_val) if die_qty_val is not None else '-'
+        batch_qty_val = str(batch_qty_val) if batch_qty_val is not None else '-'
         
         qty_data = [
             [
@@ -1258,9 +1279,9 @@ def generate_pdf():
                 create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
             ],
             [
-                create_paragraph(size_val if size_val else '-', table_cell_center_style),
-                create_paragraph(die_qty_val if die_qty_val else '-', table_cell_center_style),
-                create_paragraph(batch_qty_val if batch_qty_val else '-', table_cell_center_style)
+                create_paragraph(size_val, table_cell_center_style),
+                create_paragraph(die_qty_val, table_cell_center_style),
+                create_paragraph(batch_qty_val, table_cell_center_style)
             ]
         ]
         
