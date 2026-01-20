@@ -423,6 +423,11 @@ def extract_and_preserve_numbers(text):
     if not text:
         return []
     
+    # Ensure text is a string
+    text_str = str(text) if text is not None else ""
+    if not text_str:
+        return []
+    
     # Find all numbers and their positions
     number_patterns = [
         (r'\d+\.\d+', float),  # Decimal numbers
@@ -431,13 +436,17 @@ def extract_and_preserve_numbers(text):
     
     numbers = []
     for pattern, type_func in number_patterns:
-        for match in re.finditer(pattern, text):
-            numbers.append({
-                'start': match.start(),
-                'end': match.end(),
-                'value': match.group(),
-                'type': type_func
-            })
+        try:
+            for match in re.finditer(pattern, text_str):
+                numbers.append({
+                    'start': match.start(),
+                    'end': match.end(),
+                    'value': match.group(),
+                    'type': type_func
+                })
+        except Exception as e:
+            # If regex fails, continue without numbers
+            continue
     
     return numbers
 
