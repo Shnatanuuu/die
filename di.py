@@ -1,13 +1,8 @@
 import streamlit as st
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch, cm
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
-from reportlab.pdfgen import canvas
+from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from datetime import datetime
 import io
@@ -17,18 +12,19 @@ import os
 from dotenv import load_dotenv
 import re
 
-# Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
 openai_api_key = os.getenv("OPENAI_API_KEY")
-if openai_api_key:
-    openai_client = OpenAI(api_key=openai_api_key)
-else:
-    openai_client = None
-    st.warning("OpenAI API key not found. Some features may be limited.")
+openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
-# Page config
+# ─── Register Chinese font ──────────────────────────────────────────────────
+try:
+    pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+    CHINESE_FONT = 'STSong-Light'
+except Exception:
+    CHINESE_FONT = 'Helvetica'
+
+# ─── Page config ───────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Die Cut Test Report System",
     page_icon="✂️",
@@ -36,214 +32,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Chinese cities dictionary
+# ─── Chinese cities ─────────────────────────────────────────────────────────
 CHINESE_CITIES = {
-    "Guangzhou": "广州",
-    "Shenzhen": "深圳",
-    "Dongguan": "东莞",
-    "Foshan": "佛山",
-    "Zhongshan": "中山",
-    "Huizhou": "惠州",
-    "Zhuhai": "珠海",
-    "Jiangmen": "江门",
-    "Zhaoqing": "肇庆",
-    "Shanghai": "上海",
-    "Beijing": "北京",
-    "Suzhou": "苏州",
-    "Hangzhou": "杭州",
-    "Ningbo": "宁波",
-    "Wenzhou": "温州",
-    "Wuhan": "武汉",
-    "Chengdoo": "成都",
-    "Chongqing": "重庆",
-    "Tianjin": "天津",
-    "Nanjing": "南京",
-    "Xi'an": "西安",
-    "Qingdao": "青岛",
-    "Dalian": "大连",
-    "Shenyang": "沈阳",
-    "Changsha": "长沙",
-    "Zhengzhou": "郑州",
-    "Jinan": "济南",
-    "Harbin": "哈尔滨",
-    "Changchun": "长春",
-    "Taiyuan": "太原",
-    "Shijiazhuang": "石家庄",
-    "Lanzhou": "兰州",
-    "Xiamen": "厦门",
-    "Fuzhou": "福州",
-    "Nanning": "南宁",
-    "Kunming": "昆明",
-    "Guiyang": "贵阳",
-    "Haikou": "海口",
-    "Ürümqi": "乌鲁木齐",
-    "Lhasa": "拉萨"
+    "Guangzhou": "广州", "Shenzhen": "深圳", "Dongguan": "东莞",
+    "Foshan": "佛山", "Zhongshan": "中山", "Huizhou": "惠州",
+    "Zhuhai": "珠海", "Jiangmen": "江门", "Zhaoqing": "肇庆",
+    "Shanghai": "上海", "Beijing": "北京", "Suzhou": "苏州",
+    "Hangzhou": "杭州", "Ningbo": "宁波", "Wenzhou": "温州",
+    "Wuhan": "武汉", "Chengdu": "成都", "Chongqing": "重庆",
+    "Tianjin": "天津", "Nanjing": "南京", "Xi'an": "西安",
+    "Qingdao": "青岛", "Dalian": "大连", "Shenyang": "沈阳",
+    "Changsha": "长沙", "Zhengzhou": "郑州", "Jinan": "济南",
+    "Harbin": "哈尔滨", "Changchun": "长春", "Taiyuan": "太原",
+    "Shijiazhuang": "石家庄", "Lanzhou": "兰州", "Xiamen": "厦门",
+    "Fuzhou": "福州", "Nanning": "南宁", "Kunming": "昆明",
+    "Guiyang": "贵阳", "Haikou": "海口", "Ürümqi": "乌鲁木齐",
+    "Lhasa": "拉萨",
 }
 
-# Custom icons
-ICONS = {
-    "title": "✂️",
-    "basic_info": "📋",
-    "die_cut_test": "🔪",
-    "batch_test": "📦",
-    "main_check": "✓",
-    "tech_specs": "📏",
-    "test_results": "🧪",
-    "issues_solutions": "⚠️",
-    "signatures": "✍️",
-    "generate": "📊",
-    "download": "📥",
-    "settings": "⚙️",
-    "language": "🌐",
-    "location": "📍",
-    "time": "🕐",
-    "info": "ℹ️",
-    "factory": "🏭",
-    "brand": "🏷️",
-    "style": "👕",
-    "sales": "👔",
-    "tech": "🔧",
-    "qc": "👁️",
-    "success": "✅",
-    "error": "❌",
-    "warning": "⚠️",
-    "check": "✓",
-    "test": "🧪",
-    "measure": "📐",
-    "calendar": "📅",
-    "quantity": "🔢"
-}
-
-# Custom CSS
-st.markdown("""
-<style>
-   .main-header{font-size:2.6rem;font-weight:800;text-align:center;
-  color: #4299E1;
-  margin-bottom:1.5rem;padding:0.5rem;}
-    .section-header {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #2c3e50;
-        margin-top: 2rem;
-        margin-bottom: 1.2rem;
-        padding: 0.8rem 1rem;
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        border-radius: 10px;
-        border-left: 5px solid #667eea;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        font-size: 1.2rem;
-        font-weight: 600;
-        padding: 0.8rem 2rem;
-        border-radius: 10px;
-        border: none;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        transition: all 0.3s ease;
-        width: 100%;
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-    }
-    .location-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        box-shadow: 0 3px 6px rgba(0,0,0,0.1);
-        margin: 0.5rem 0;
-    }
-    .footer {
-        text-align: center;
-        padding: 1.5rem;
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        border-radius: 10px;
-        margin-top: 2rem;
-        border-top: 3px solid #667eea;
-    }
-    .checkbox-container {
-        background: white;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .test-row {
-        background: linear-gradient(90deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 8px;
-        padding: 0.8rem;
-        margin: 0.3rem 0;
-        border-left: 4px solid #667eea;
-    }
-    .size-table-container {
-        background: white;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 1rem 0;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Initialize session state for user inputs
-if 'ui_language' not in st.session_state:
-    st.session_state.ui_language = "en"
-if 'pdf_language' not in st.session_state:
-    st.session_state.pdf_language = "en"
-if 'selected_city' not in st.session_state:
-    st.session_state.selected_city = "Shanghai"
-if 'translation_cache' not in st.session_state:
-    st.session_state.translation_cache = {}
-if 'english_values' not in st.session_state:
-    st.session_state.english_values = {
-        'contract_no': '',
-        'brand': '',
-        'agent_factory': '',
-        'style_name': '',
-        'qty': '',
-        'sales': '',
-        'factory_style': '',
-        'size': '',
-        'die_qty': '',
-        'batch_qty': '',
-        'last_no_comments': '',
-        'color_comments': '',
-        'tack_free_comments': '',
-        'tech_specs_comments': '',
-        'size_run_comments': '',
-        'fitting_comments': '',
-        'top_sample_comments': '',
-        'tech_comments_description': '',
-        'sole_bonding_result': '',
-        'top_piece_result': '',
-        'straps_strength_result': '',
-        'heel_attachment_result': '',
-        'insole_perment_result': '',
-        'toe_post_result': '',
-        'die_cut_issues': '',
-        'batch_test_issues': '',
-        'factory_representative': '',
-        'gs_qc': '',
-        'grandstep_technician': '',
-        'area_manager': '',
-        'qa_manager': ''
-    }
-if 'size_data' not in st.session_state:
-    st.session_state.size_data = []
-
-# SEPARATE TEXT DICTIONARIES
+# ─── UI text dictionaries ───────────────────────────────────────────────────
 ENGLISH_TEXTS = {
     "title": "Die Cut Test Report System",
     "basic_info": "Basic Information",
@@ -254,23 +61,22 @@ ENGLISH_TEXTS = {
     "test_results": "Test Results",
     "issues_solutions": "Issues & Solutions",
     "signatures": "Signatures",
-    "generate_pdf": "Generate PDF Report",
-    "download_pdf": "Download PDF Report",
+    "generate_pdf": "🎯 Generate PDF Report",
+    "download_pdf": "📥 Download PDF Report",
     "contract_no": "Contract No.",
     "brand": "Brand",
     "agent_factory": "Agent and Factory",
     "style_name": "Style Name",
     "qty": "QTY",
     "sales": "Sales",
-    "factory_style": "Factory style",
+    "factory_style": "Factory Style",
     "ship_date": "Ship Date",
     "size": "Size",
     "die_qty": "QTY (Die)",
     "batch_qty": "QTY (Batches)",
-    "test_dates": "Test Dates",
     "footer_text": "Die Cut Test Report System",
     "generate_success": "PDF Generated Successfully!",
-    "fill_required": "Please fill in required fields!",
+    "fill_required": "Please fill in Contract No. and Style Name!",
     "creating_pdf": "Creating PDF report...",
     "pdf_details": "PDF Details",
     "report_language": "Report Language",
@@ -280,17 +86,16 @@ ENGLISH_TEXTS = {
     "select_location": "Select Location",
     "user_interface_language": "User Interface Language",
     "pdf_report_language": "PDF Report Language",
-    "test_location": "Test Location",
     "local_time": "Local Time",
     "quick_guide": "Quick Guide",
     "powered_by": "Powered by Streamlit",
-    "copyright": "© 2024 - Die Cut Test Platform",
+    "copyright": "© 2025 - Die Cut Test Platform",
     "check_items": "Check Items",
     "comments": "Comments",
     "yes": "YES",
     "no": "NO",
-    "test_standards": "Test Standards",
-    "pass_fail": "Pass/Fail",
+    "pass_": "PASS",
+    "fail_": "FAIL",
     "client_standard": "Client's Standard",
     "result": "Result",
     "disclaimer": "Disclaimer",
@@ -299,7 +104,6 @@ ENGLISH_TEXTS = {
     "gs_tech": "Grand Step Technician",
     "area_manager": "Area Manager",
     "qa_manager": "QA Manager",
-    "updated_date": "Updated Date",
     "die_cut_date": "Die Cut Date",
     "batch_test_date": "Batch Test Date",
     "last_no_correct": "Last No. Correct",
@@ -318,7 +122,6 @@ ENGLISH_TEXTS = {
     "heel_attachment": "Heel Attachment",
     "insole_perment": "Insole Perment set at 400N",
     "toe_post": "Toe Post Attachment",
-    "main_issues": "Main issues & Solution",
     "signature_date": "Date",
     "updated_2022": "Updated 2022.8.30",
     "disclaimer_text": "Note: This review information does not release the factory from any responsibilities in the event of claims being received from our customer.",
@@ -326,6 +129,14 @@ ENGLISH_TEXTS = {
     "remove_size": "Remove",
     "size_table_title": "Size & Quantity Details",
     "total": "Total",
+    "tab_basic": "📋 Basic Info",
+    "tab_check": "✓ Check Points",
+    "tab_test": "🧪 Test Results",
+    "tab_sign": "✍️ Signatures",
+    "ui_lang": "User Interface Language",
+    "pdf_lang": "PDF Report Language",
+    "translation_active": "Translation API: Active",
+    "translation_off": "Translation API: Not Configured",
 }
 
 MANDARIN_TEXTS = {
@@ -338,8 +149,8 @@ MANDARIN_TEXTS = {
     "test_results": "测试结果",
     "issues_solutions": "问题与解决方案",
     "signatures": "签名",
-    "generate_pdf": "生成PDF报告",
-    "download_pdf": "下载PDF报告",
+    "generate_pdf": "🎯 生成PDF报告",
+    "download_pdf": "📥 下载PDF报告",
     "contract_no": "订单号",
     "brand": "商标",
     "agent_factory": "贸易商和工厂",
@@ -351,10 +162,9 @@ MANDARIN_TEXTS = {
     "size": "试做号码数",
     "die_qty": "数量(斩刀)",
     "batch_qty": "数量(小批量)",
-    "test_dates": "测试日期",
     "footer_text": "斩刀试做报告系统",
     "generate_success": "PDF生成成功！",
-    "fill_required": "请填写必填字段！",
+    "fill_required": "请填写订单号和型体！",
     "creating_pdf": "正在创建PDF报告...",
     "pdf_details": "PDF详情",
     "report_language": "报告语言",
@@ -364,17 +174,16 @@ MANDARIN_TEXTS = {
     "select_location": "选择地点",
     "user_interface_language": "用户界面语言",
     "pdf_report_language": "PDF报告语言",
-    "test_location": "测试地点",
     "local_time": "本地时间",
     "quick_guide": "快速指南",
     "powered_by": "由Streamlit驱动",
-    "copyright": "© 2024 - 斩刀测试平台",
+    "copyright": "© 2025 - 斩刀测试平台",
     "check_items": "检查项目",
     "comments": "建议",
     "yes": "是",
     "no": "否",
-    "test_standards": "测试标准",
-    "pass_fail": "通过/失败",
+    "pass_": "通过",
+    "fail_": "不通过",
     "client_standard": "客人标准",
     "result": "结果",
     "disclaimer": "免责声明",
@@ -383,7 +192,6 @@ MANDARIN_TEXTS = {
     "gs_tech": "志途师傅",
     "area_manager": "地区经理",
     "qa_manager": "品管经理",
-    "updated_date": "更新日期",
     "die_cut_date": "斩刀日期",
     "batch_test_date": "小批量日期",
     "last_no_correct": "楦头编号正确",
@@ -402,7 +210,6 @@ MANDARIN_TEXTS = {
     "heel_attachment": "跟拉脱",
     "insole_perment": "中底钢芯变形率",
     "toe_post": "夹指带拉脱",
-    "main_issues": "主要问题及解决方案",
     "signature_date": "日期",
     "updated_2022": "更新 2022.8.30",
     "disclaimer_text": "此报表不免除我客人收到货后索赔而引起的货物供应商(工厂)的任何责任.",
@@ -410,1525 +217,1239 @@ MANDARIN_TEXTS = {
     "remove_size": "删除",
     "size_table_title": "尺码与数量详情",
     "total": "总计",
+    "tab_basic": "📋 基本信息",
+    "tab_check": "✓ 核查内容",
+    "tab_test": "🧪 测试结果",
+    "tab_sign": "✍️ 签名",
+    "ui_lang": "界面语言",
+    "pdf_lang": "PDF报告语言",
+    "translation_active": "翻译API: 已启用",
+    "translation_off": "翻译API: 未配置",
 }
 
-def get_text(key, fallback=None):
-    """Get text based on current UI language"""
-    lang = st.session_state.ui_language
-    if lang == "zh":
-        return MANDARIN_TEXTS.get(key, fallback or key)
-    else:
-        return ENGLISH_TEXTS.get(key, fallback or key)
+def t(key):
+    lang = st.session_state.get('ui_language', 'en')
+    if lang == 'zh':
+        return MANDARIN_TEXTS.get(key, ENGLISH_TEXTS.get(key, key))
+    return ENGLISH_TEXTS.get(key, key)
 
-def get_pdf_text(key, pdf_language):
-    """Get text for PDF based on selected language"""
-    if pdf_language == "zh":
-        return MANDARIN_TEXTS.get(key, key)
-    else:
-        return ENGLISH_TEXTS.get(key, key)
+def pt(key, pdf_lang):
+    if pdf_lang == 'zh':
+        return MANDARIN_TEXTS.get(key, ENGLISH_TEXTS.get(key, key))
+    return ENGLISH_TEXTS.get(key, key)
 
-# SIMPLIFIED NUMBER HANDLING - NO CONVERSIONS, JUST DISPLAY
-def get_display_text(value):
-    """Convert any value to display text"""
-    if value is None:
-        return ''
-    if isinstance(value, str):
-        return value.strip()
-    return str(value)
-
-def translate_text_with_openai(text, target_language):
-    """Translate text using OpenAI"""
-    if text is None:
-        return ""
-    
-    text_str = str(text).strip()
-    if text_str == "":
-        return ""
-    
-    cache_key = (text_str, target_language)
-    if cache_key in st.session_state.translation_cache:
-        cached_result = st.session_state.translation_cache[cache_key]
-        return str(cached_result) if cached_result is not None else ""
-    
+# ─── Translation ─────────────────────────────────────────────────────────────
+def translate_text_api(text, target_language="zh"):
+    if not text or not str(text).strip():
+        return text or ''
     if not openai_client:
-        return text_str
-    
-    if target_language == "zh":
-        target_lang_name = "Simplified Chinese"
-    else:
-        target_lang_name = "English"
-    
+        return text
+    text = str(text)
+    cache_key = f"{text}|{target_language}"
+    if cache_key in st.session_state.get('translation_cache', {}):
+        return st.session_state.translation_cache[cache_key]
+    clean = text.replace(' ', '').replace('-', '').replace('/', '')
+    if clean.isdigit() or re.match(r'^[A-Za-z]*\d+[A-Za-z]*$', clean):
+        return text
+    if re.search(r'[\u4e00-\u9fff]', text):
+        return text
     try:
-        prompt = f"""Translate this text to {target_lang_name}. 
-        IMPORTANT: Preserve all numbers, measurements, units, and special codes exactly as they are.
-        
-        Text to translate: {text_str}
-        
-        Translation:"""
-        
-        response = openai_client.chat.completions.create(
+        lang_name = "Simplified Chinese" if target_language == "zh" else "English"
+        resp = openai_client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": prompt
-            }],
-            max_tokens=500,
-            temperature=0.1
+            messages=[
+                {"role": "system", "content": f"Translate to {lang_name}. Preserve numbers, codes, measurements. Return ONLY the translation."},
+                {"role": "user", "content": text}
+            ],
+            temperature=0.1, max_tokens=500
         )
-        
-        translated = response.choices[0].message.content.strip()
-        st.session_state.translation_cache[cache_key] = translated
-        return str(translated) if translated is not None else text_str
-        
-    except Exception as e:
-        return text_str
+        result = resp.choices[0].message.content.strip()
+        if 'translation_cache' not in st.session_state:
+            st.session_state.translation_cache = {}
+        st.session_state.translation_cache[cache_key] = result
+        return result
+    except Exception:
+        return text
 
-def get_display_value(field_key):
-    """Get value for display based on current UI language"""
-    english_value = st.session_state.english_values.get(field_key, '')
-    if not english_value:
-        return ''
-    
-    if st.session_state.ui_language == "en":
-        result = str(english_value) if english_value is not None else ''
-    else:
-        result = translate_text_with_openai(english_value, "zh")
-    
-    return str(result) if result is not None else ''
+# ─── Session state ────────────────────────────────────────────────────────────
+for key, val in [
+    ('ui_language', 'en'),
+    ('pdf_language', 'en'),
+    ('selected_city', 'Shanghai'),
+    ('translation_cache', {}),
+    ('size_data', []),
+    ('english_values', {
+        'contract_no': '', 'brand': '', 'agent_factory': '', 'style_name': '',
+        'qty': '', 'sales': '', 'factory_style': '',
+        'last_no_comments': '', 'color_comments': '', 'tack_free_comments': '',
+        'tech_specs_comments': '', 'size_run_comments': '', 'fitting_comments': '',
+        'top_sample_comments': '', 'tech_comments_description': '',
+        'sole_bonding_result': '', 'top_piece_result': '', 'straps_strength_result': '',
+        'heel_attachment_result': '', 'insole_perment_result': '', 'toe_post_result': '',
+        'factory_representative': '', 'gs_qc': '', 'grandstep_technician': '',
+        'area_manager': '', 'qa_manager': ''
+    }),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = val
 
-def update_english_value(field_key, displayed_value):
-    """Update the English value based on user input"""
-    if not displayed_value or displayed_value.strip() == "":
+def get_ev(field_key):
+    return st.session_state.english_values.get(field_key, '')
+
+def set_ev(field_key, value):
+    if value is None or str(value).strip() == '':
         st.session_state.english_values[field_key] = ''
         return
-    
-    display_str = str(displayed_value).strip()
-    
-    if st.session_state.ui_language == "en":
-        st.session_state.english_values[field_key] = display_str
+    v = str(value).strip()
+    if st.session_state.ui_language == 'en':
+        st.session_state.english_values[field_key] = v
     else:
-        def contains_chinese(text):
-            if not text:
-                return False
-            text_str = str(text) if text is not None else ""
-            for char in text_str:
-                if '\u4e00' <= char <= '\u9fff':
-                    return True
-            return False
-        
-        if contains_chinese(display_str):
-            english_text = translate_text_with_openai(display_str, "en")
-            st.session_state.english_values[field_key] = english_text
+        has_cjk = any('\u4e00' <= c <= '\u9fff' for c in v)
+        if has_cjk:
+            st.session_state.english_values[field_key] = translate_text_api(v, 'en')
         else:
-            st.session_state.english_values[field_key] = display_str
+            st.session_state.english_values[field_key] = v
 
-def get_pdf_display_value(field_key, pdf_language):
-    """Get value for PDF generation based on PDF language"""
-    english_value = st.session_state.english_values.get(field_key, '')
-    if not english_value:
+def display_val(field_key):
+    ev = get_ev(field_key)
+    if not ev:
         return ''
-    
-    if pdf_language == "en":
-        result = str(english_value) if english_value is not None else ''
-    else:
-        result = translate_text_with_openai(english_value, "zh")
-    
-    return str(result) if result is not None else ''
+    if st.session_state.ui_language == 'en':
+        return ev
+    return translate_text_api(ev, 'zh')
 
-# Helper function for size management
+def pdf_val(field_key, pdf_lang):
+    ev = get_ev(field_key)
+    if not ev:
+        return ''
+    if pdf_lang == 'en':
+        return ev
+    return translate_text_api(ev, 'zh')
+
 def add_size_row():
-    """Add a new empty size row"""
-    st.session_state.size_data.append({
-        'size': '',
-        'die_qty': '',
-        'batch_qty': ''
-    })
+    st.session_state.size_data.append({'size': '', 'die_qty': '', 'batch_qty': ''})
 
 def remove_size_row(index):
-    """Remove a size row by index"""
     if 0 <= index < len(st.session_state.size_data):
         st.session_state.size_data.pop(index)
 
-# SIMPLIFIED PDF Generation - NO NUMBER CALCULATIONS
-class DieCutPDF(SimpleDocTemplate):
-    def __init__(self, *args, **kwargs):
-        self.pdf_language = kwargs.pop('pdf_language', 'en')
-        self.selected_city = kwargs.pop('selected_city', '')
-        self.chinese_city = kwargs.pop('chinese_city', '')
-        super().__init__(*args, **kwargs)
-        
-    def onFirstPage(self, canvas, doc):
-        """Add header to first page"""
-        canvas.saveState()
-        
-        if self.pdf_language == "zh":
-            canvas.setFont('Helvetica-Bold', 14)
-        else:
-            canvas.setFont('Helvetica-Bold', 14)
-            
-        canvas.setFillColor(colors.HexColor('#667eea'))
-        
-        if self.pdf_language == "zh":
-            company_name = "志途"
-            report_title = "斩刀试做报告"
-        else:
-            company_name = "Grandstep"
-            report_title = "Die Cut Test Report"
-        
-        canvas.drawCentredString(doc.pagesize[0]/2, doc.pagesize[1] - 0.5*inch, company_name)
-        
-        canvas.setFont('Helvetica-Bold', 12)
-        canvas.setFillColor(colors.HexColor('#333333'))
-        canvas.drawCentredString(doc.pagesize[0]/2, doc.pagesize[1] - 0.7*inch, report_title)
-        
-        canvas.setStrokeColor(colors.HexColor('#667eea'))
-        canvas.setLineWidth(1)
-        canvas.line(1*inch, doc.pagesize[1] - 0.8*inch, doc.pagesize[0] - 1*inch, doc.pagesize[1] - 0.8*inch)
-        
-        canvas.restoreState()
-        self._addFooter(canvas, doc, 1)
-        
-    def onLaterPages(self, canvas, doc):
-        """Add header to later pages"""
-        canvas.saveState()
-        
-        canvas.setStrokeColor(colors.HexColor('#e2e8f0'))
-        canvas.setLineWidth(0.5)
-        canvas.line(0.5*inch, doc.pagesize[1] - 0.5*inch, doc.pagesize[0] - 0.5*inch, doc.pagesize[1] - 0.5*inch)
-        
-        canvas.restoreState()
-        self._addFooter(canvas, doc, canvas.getPageNumber())
-        
-    def _addFooter(self, canvas, doc, page_num):
-        """Add footer to pages"""
-        canvas.saveState()
-        
-        canvas.setStrokeColor(colors.HexColor('#e2e8f0'))
-        canvas.setLineWidth(0.5)
-        canvas.line(0.5*inch, 0.6*inch, doc.pagesize[0] - 0.5*inch, 0.6*inch)
-        
-        if self.pdf_language == "zh":
-            canvas.setFont('Helvetica', 8)
-        else:
-            canvas.setFont('Helvetica', 8)
-            
-        canvas.setFillColor(colors.HexColor('#666666'))
-        
-        china_tz = pytz.timezone('Asia/Shanghai')
-        current_time = datetime.now(china_tz)
-        
-        if self.pdf_language == "zh":
-            location_text = f"地点: {self.chinese_city}"
-            date_text = f"日期: {current_time.strftime('%Y年%m月%d日')}"
-            page_num_text = f"第 {page_num} 页"
-        else:
-            location_text = f"Location: {self.selected_city}"
-            date_text = f"Date: {current_time.strftime('%Y-%m-%d')}"
-            page_num_text = f"Page {page_num}"
-        
-        canvas.drawString(0.5*inch, 0.3*inch, location_text)
-        
-        company_footer = "志途质量检测" if self.pdf_language == "zh" else "Grandstep QC"
-        if self.pdf_language == "zh":
-            canvas.setFont('Helvetica-Bold', 8)
-        else:
-            canvas.setFont('Helvetica-Bold', 8)
-        canvas.setFillColor(colors.HexColor('#667eea'))
-        canvas.drawCentredString(doc.pagesize[0]/2, 0.3*inch, company_footer)
-        
-        if self.pdf_language == "zh":
-            canvas.setFont('Helvetica', 8)
-        else:
-            canvas.setFont('Helvetica', 8)
-        canvas.setFillColor(colors.HexColor('#666666'))
-        right_text = f"{date_text} | {page_num_text}"
-        canvas.drawRightString(doc.pagesize[0] - 0.5*inch, 0.3*inch, right_text)
-        
-        canvas.restoreState()
+# ══════════════════════════════════════════════════════════════════════════════
+#  PDF DESIGN TOKENS  (matching the Production Risk Assessment style)
+# ══════════════════════════════════════════════════════════════════════════════
+C_PRIMARY   = colors.HexColor('#1a1a2e')
+C_ACCENT    = colors.HexColor('#e94560')
+C_ACCENT2   = colors.HexColor('#0f3460')
+C_LIGHT     = colors.HexColor('#f0f4ff')
+C_WHITE     = colors.white
+C_GREY_TEXT = colors.HexColor('#555555')
+C_GREY_LINE = colors.HexColor('#dddddd')
+C_GREEN     = colors.HexColor('#27ae60')
+C_RED       = colors.HexColor('#e74c3c')
+C_ORANGE    = colors.HexColor('#f39c12')
 
-def safe_date_format(date_val, format_str):
-    """Safely format a date, handling None values"""
-    if date_val is None:
-        return ""
-    try:
-        if hasattr(date_val, 'strftime'):
-            return date_val.strftime(format_str)
-        else:
-            return str(date_val)
-    except Exception:
-        return str(date_val)
+PAGE_W, PAGE_H = A4
+HEADER_H  = 60
+FOOTER_H  = 36
+MARGIN_L  = 40
+MARGIN_R  = 40
+CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R
 
+
+def _font(pdf_lang, bold=False):
+    if pdf_lang == "zh":
+        return CHINESE_FONT
+    return 'Helvetica-Bold' if bold else 'Helvetica'
+
+
+# ─── Character & text width helpers ──────────────────────────────────────────
+def _char_width(ch, font_size):
+    cp = ord(ch)
+    if (0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF or
+            0x3000 <= cp <= 0x303F or 0xFF00 <= cp <= 0xFFEF or
+            0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF):
+        return font_size * 1.0
+    return font_size * 0.52
+
+
+def _text_width(text, font_size):
+    return sum(_char_width(ch, font_size) for ch in str(text))
+
+
+def _wrap_text(text, max_width, font_size):
+    if not text or not str(text).strip():
+        return ["—"]
+    text = str(text)
+    lines = []
+    for paragraph in text.replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+        if not paragraph.strip():
+            lines.append("")
+            continue
+        words = paragraph.split()
+        current, current_w = "", 0.0
+        for word in words:
+            word_w = _text_width(word, font_size)
+            space_w = _text_width(" ", font_size)
+            if current == "":
+                if word_w > max_width:
+                    for ch in word:
+                        ch_w = _char_width(ch, font_size)
+                        if current_w + ch_w > max_width and current:
+                            lines.append(current); current = ch; current_w = ch_w
+                        else:
+                            current += ch; current_w += ch_w
+                else:
+                    current, current_w = word, word_w
+            else:
+                test_w = current_w + space_w + word_w
+                if test_w <= max_width:
+                    current += " " + word; current_w = test_w
+                else:
+                    lines.append(current)
+                    if word_w > max_width:
+                        current, current_w = "", 0.0
+                        for ch in word:
+                            ch_w = _char_width(ch, font_size)
+                            if current_w + ch_w > max_width and current:
+                                lines.append(current); current = ch; current_w = ch_w
+                            else:
+                                current += ch; current_w += ch_w
+                    else:
+                        current, current_w = word, word_w
+        if current:
+            lines.append(current)
+    return lines if lines else ["—"]
+
+
+# ─── Shared drawing primitives ────────────────────────────────────────────────
+def draw_page_frame(c, page_num, total_pages, pdf_lang, city, city_zh, gen_time):
+    w, h = PAGE_W, PAGE_H
+    # Header bar
+    c.setFillColor(C_PRIMARY)
+    c.rect(0, h - HEADER_H, w, HEADER_H, fill=1, stroke=0)
+    c.setFillColor(C_ACCENT)
+    c.rect(0, h - HEADER_H, 6, HEADER_H, fill=1, stroke=0)
+    fn = _font(pdf_lang, bold=True)
+    header_l = "Grand Step (H.K.) Ltd"
+    header_r = "斩刀试做报告" if pdf_lang == "zh" else "DIE CUT TEST REPORT"
+    c.setFillColor(C_WHITE); c.setFont(fn, 13)
+    c.drawString(MARGIN_L, h - HEADER_H + 22, header_l)
+    c.setFont(_font(pdf_lang), 9)
+    c.drawRightString(w - MARGIN_R, h - HEADER_H + 22, header_r)
+    # Footer bar
+    c.setFillColor(C_PRIMARY)
+    c.rect(0, 0, w, FOOTER_H, fill=1, stroke=0)
+    c.setFillColor(C_ACCENT)
+    c.rect(0, FOOTER_H - 3, w, 3, fill=1, stroke=0)
+    c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang), 7.5)
+    loc_str  = f"地点: {city} ({city_zh})" if pdf_lang == "zh" else f"Location: {city}"
+    pg_str   = f"第 {page_num} 页 / 共 {total_pages} 页" if pdf_lang == "zh" else f"Page {page_num} of {total_pages}"
+    time_str = f"生成时间: {gen_time}" if pdf_lang == "zh" else f"Generated: {gen_time}"
+    c.drawString(MARGIN_L, 13, loc_str)
+    c.drawCentredString(w / 2, 13, time_str)
+    c.drawRightString(w - MARGIN_R, 13, pg_str)
+
+
+def draw_section_header(c, y, label, pdf_lang):
+    bar_h = 22
+    c.setFillColor(C_ACCENT2)
+    c.roundRect(MARGIN_L, y - bar_h, CONTENT_W, bar_h, 4, fill=1, stroke=0)
+    c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 10)
+    c.drawString(MARGIN_L + 10, y - bar_h + 7, label)
+    return y - bar_h - 8
+
+
+def draw_kv_row(c, x, y, w, label, value, pdf_lang, shade=False):
+    ROW_H = 18
+    if shade:
+        c.setFillColor(C_LIGHT)
+        c.rect(x, y - ROW_H, w, ROW_H, fill=1, stroke=0)
+    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.4)
+    c.line(x, y - ROW_H, x + w, y - ROW_H)
+    lw = w * 0.38
+    c.setFillColor(C_ACCENT2); c.setFont(_font(pdf_lang, bold=True), 8)
+    c.drawString(x + 6, y - ROW_H + 6, str(label))
+    c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), 8)
+    c.drawString(x + lw + 6, y - ROW_H + 6, str(value)[:80])
+    return y - ROW_H
+
+
+def draw_two_col_kv(c, y, pairs, pdf_lang, shade_alt=True):
+    col_w = (CONTENT_W - 10) / 2
+    for i, (l1, v1, l2, v2) in enumerate(pairs):
+        shade = (i % 2 == 0) and shade_alt
+        draw_kv_row(c, MARGIN_L,              y, col_w, l1, v1, pdf_lang, shade)
+        draw_kv_row(c, MARGIN_L + col_w + 10, y, col_w, l2, v2, pdf_lang, shade)
+        y -= 18
+    return y
+
+
+def draw_text_block(c, y, label, text, pdf_lang, accent_color=None):
+    if not text or not str(text).strip():
+        text = "—"
+    if accent_color is None:
+        accent_color = C_ACCENT2
+    FONT_SIZE = 8; LINE_H = 14; PADDING = 8; LABEL_H = 18
+    lines = _wrap_text(text, CONTENT_W - 20, FONT_SIZE)
+    total_text_h = len(lines) * LINE_H + PADDING * 2
+    block_h = LABEL_H + total_text_h
+    c.setFillColor(C_LIGHT)
+    c.rect(MARGIN_L, y - block_h, CONTENT_W, block_h, fill=1, stroke=0)
+    c.setFillColor(accent_color)
+    c.rect(MARGIN_L, y - LABEL_H, CONTENT_W, LABEL_H, fill=1, stroke=0)
+    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.4)
+    c.rect(MARGIN_L, y - block_h, CONTENT_W, block_h, fill=0, stroke=1)
+    c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 8)
+    c.drawString(MARGIN_L + 8, y - LABEL_H + 6, str(label))
+    ty = y - LABEL_H - PADDING - LINE_H + 4
+    c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), FONT_SIZE)
+    for line in lines:
+        if line:
+            c.drawString(MARGIN_L + 10, ty, line)
+        ty -= LINE_H
+    return y - block_h - 6
+
+
+def draw_check_table(c, y, rows, col_labels, pdf_lang):
+    """
+    Four-column check table: Item | YES | NO | Comments
+    rows: list of (label, yes_bool, no_bool, comment_str)
+    """
+    COL_WIDTHS = [CONTENT_W * 0.42, CONTENT_W * 0.09, CONTENT_W * 0.09, CONTENT_W * 0.40]
+    HDR_H = 22; ROW_PAD = 6; FONT_SIZE = 8; LINE_H = 13
+    col_inner = [cw - 12 for cw in COL_WIDTHS]
+    fn_b = _font(pdf_lang, bold=True); fn_r = _font(pdf_lang)
+    # Header
+    c.setFillColor(C_ACCENT)
+    c.rect(MARGIN_L, y - HDR_H, CONTENT_W, HDR_H, fill=1, stroke=0)
+    c.setFillColor(C_WHITE); c.setFont(fn_b, 8.5)
+    cx = MARGIN_L + 6
+    for i, lbl in enumerate(col_labels):
+        c.drawString(cx, y - HDR_H + 8, lbl)
+        cx += COL_WIDTHS[i]
+    y -= HDR_H
+    table_top = y
+    for i, (item, yes_v, no_v, comment) in enumerate(rows):
+        item_lines    = _wrap_text(item,    col_inner[0], FONT_SIZE)
+        comment_lines = _wrap_text(comment, col_inner[3], FONT_SIZE)
+        max_lines = max(len(item_lines), len(comment_lines), 1)
+        row_h = max_lines * LINE_H + ROW_PAD * 2
+        if i % 2 == 0:
+            c.setFillColor(C_LIGHT)
+            c.rect(MARGIN_L, y - row_h, CONTENT_W, row_h, fill=1, stroke=0)
+        c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+        c.line(MARGIN_L, y - row_h, MARGIN_L + CONTENT_W, y - row_h)
+        cx_sep = MARGIN_L
+        for cw in COL_WIDTHS[:-1]:
+            cx_sep += cw
+            c.line(cx_sep, y, cx_sep, y - row_h)
+        # Item text
+        c.setFillColor(C_PRIMARY); c.setFont(fn_r, FONT_SIZE)
+        ty = y - ROW_PAD - LINE_H + 3
+        for ln in item_lines:
+            if ln: c.drawString(MARGIN_L + 6, ty, ln)
+            ty -= LINE_H
+        # YES / NO ticks
+        yes_x = MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] / 2
+        no_x  = MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] + COL_WIDTHS[2] / 2
+        mid_y = y - row_h / 2
+        c.setFont(fn_b, 10)
+        if yes_v:
+            c.setFillColor(C_GREEN); c.drawCentredString(yes_x, mid_y - 4, "✓")
+        if no_v:
+            c.setFillColor(C_RED);   c.drawCentredString(no_x,  mid_y - 4, "✗")
+        # Comment text
+        c.setFillColor(C_PRIMARY); c.setFont(fn_r, FONT_SIZE)
+        ty = y - ROW_PAD - LINE_H + 3
+        for ln in comment_lines:
+            if ln: c.drawString(MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] + COL_WIDTHS[2] + 6, ty, ln)
+            ty -= LINE_H
+        y -= row_h
+    table_body_h = table_top - y
+    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+    c.rect(MARGIN_L, y, CONTENT_W, table_body_h, fill=0, stroke=1)
+    return y - 6
+
+
+def draw_test_results_table(c, y, rows, col_labels, pdf_lang):
+    """
+    Four-column test table: Item | Result | Client Standard | PASS/FAIL
+    rows: list of (label, result_str, standard_str, pass_bool, fail_bool)
+    """
+    COL_WIDTHS = [CONTENT_W * 0.30, CONTENT_W * 0.18, CONTENT_W * 0.35, CONTENT_W * 0.17]
+    HDR_H = 22; ROW_PAD = 6; FONT_SIZE = 8; LINE_H = 13
+    col_inner = [cw - 12 for cw in COL_WIDTHS]
+    fn_b = _font(pdf_lang, bold=True); fn_r = _font(pdf_lang)
+    # Header
+    c.setFillColor(C_ACCENT)
+    c.rect(MARGIN_L, y - HDR_H, CONTENT_W, HDR_H, fill=1, stroke=0)
+    c.setFillColor(C_WHITE); c.setFont(fn_b, 8.5)
+    cx = MARGIN_L + 6
+    for i, lbl in enumerate(col_labels):
+        c.drawString(cx, y - HDR_H + 8, lbl)
+        cx += COL_WIDTHS[i]
+    y -= HDR_H
+    table_top = y
+    for i, (item, result, standard, pass_v, fail_v) in enumerate(rows):
+        item_lines     = _wrap_text(item,     col_inner[0], FONT_SIZE)
+        result_lines   = _wrap_text(result,   col_inner[1], FONT_SIZE)
+        standard_lines = _wrap_text(standard, col_inner[2], FONT_SIZE)
+        max_lines = max(len(item_lines), len(result_lines), len(standard_lines), 1)
+        row_h = max_lines * LINE_H + ROW_PAD * 2
+        if i % 2 == 0:
+            c.setFillColor(C_LIGHT)
+            c.rect(MARGIN_L, y - row_h, CONTENT_W, row_h, fill=1, stroke=0)
+        c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+        c.line(MARGIN_L, y - row_h, MARGIN_L + CONTENT_W, y - row_h)
+        cx_sep = MARGIN_L
+        for cw in COL_WIDTHS[:-1]:
+            cx_sep += cw
+            c.line(cx_sep, y, cx_sep, y - row_h)
+        ty = y - ROW_PAD - LINE_H + 3
+        c.setFillColor(C_ACCENT2); c.setFont(fn_b, FONT_SIZE)
+        for ln in item_lines:
+            if ln: c.drawString(MARGIN_L + 6, ty, ln)
+            ty -= LINE_H
+        ty = y - ROW_PAD - LINE_H + 3
+        c.setFillColor(C_PRIMARY); c.setFont(fn_r, FONT_SIZE)
+        for ln in result_lines:
+            if ln: c.drawString(MARGIN_L + COL_WIDTHS[0] + 6, ty, ln)
+            ty -= LINE_H
+        ty = y - ROW_PAD - LINE_H + 3
+        for ln in standard_lines:
+            if ln: c.drawString(MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] + 6, ty, ln)
+            ty -= LINE_H
+        mid_y = y - row_h / 2
+        pf_x = MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] + COL_WIDTHS[2] + COL_WIDTHS[3] / 2
+        if pass_v:
+            c.setFillColor(C_GREEN); c.setFont(fn_b, 8.5)
+            c.drawCentredString(pf_x, mid_y - 4, pt("pass_", pdf_lang))
+        elif fail_v:
+            c.setFillColor(C_RED);   c.setFont(fn_b, 8.5)
+            c.drawCentredString(pf_x, mid_y - 4, pt("fail_", pdf_lang))
+        else:
+            c.setFillColor(C_GREY_TEXT); c.setFont(fn_r, 8)
+            c.drawCentredString(pf_x, mid_y - 4, "—")
+        y -= row_h
+    table_body_h = table_top - y
+    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+    c.rect(MARGIN_L, y, CONTENT_W, table_body_h, fill=0, stroke=1)
+    return y - 6
+
+
+def draw_size_table(c, y, size_data, pdf_lang):
+    """Three-column size/qty table."""
+    if not size_data:
+        return y
+    COL_WIDTHS = [CONTENT_W / 3, CONTENT_W / 3, CONTENT_W / 3]
+    HDR_H = 22; ROW_H = 18; FONT_SIZE = 8
+    fn_b = _font(pdf_lang, bold=True); fn_r = _font(pdf_lang)
+    headers = [pt("size", pdf_lang), pt("die_qty", pdf_lang), pt("batch_qty", pdf_lang)]
+    c.setFillColor(C_ACCENT)
+    c.rect(MARGIN_L, y - HDR_H, CONTENT_W, HDR_H, fill=1, stroke=0)
+    c.setFillColor(C_WHITE); c.setFont(fn_b, 8.5)
+    cx = MARGIN_L + 6
+    for i, h in enumerate(headers):
+        c.drawString(cx, y - HDR_H + 8, h)
+        cx += COL_WIDTHS[i]
+    y -= HDR_H
+    table_top = y
+    for i, item in enumerate(size_data):
+        if i % 2 == 0:
+            c.setFillColor(C_LIGHT)
+            c.rect(MARGIN_L, y - ROW_H, CONTENT_W, ROW_H, fill=1, stroke=0)
+        c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+        c.line(MARGIN_L, y - ROW_H, MARGIN_L + CONTENT_W, y - ROW_H)
+        cx_sep = MARGIN_L + COL_WIDTHS[0]
+        c.line(cx_sep, y, cx_sep, y - ROW_H)
+        cx_sep += COL_WIDTHS[1]
+        c.line(cx_sep, y, cx_sep, y - ROW_H)
+        c.setFillColor(C_PRIMARY); c.setFont(fn_r, FONT_SIZE)
+        c.drawString(MARGIN_L + 6,                                   y - ROW_H + 6, str(item.get('size', '') or '—'))
+        c.drawString(MARGIN_L + COL_WIDTHS[0] + 6,                   y - ROW_H + 6, str(item.get('die_qty', '') or '—'))
+        c.drawString(MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] + 6,   y - ROW_H + 6, str(item.get('batch_qty', '') or '—'))
+        y -= ROW_H
+    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+    c.rect(MARGIN_L, y, CONTENT_W, table_top - y, fill=0, stroke=1)
+    return y - 6
+
+
+def draw_signatures_table(c, y, sigs, pdf_lang):
+    """Signature rows: Label | Name | Date"""
+    COL_WIDTHS = [CONTENT_W * 0.35, CONTENT_W * 0.40, CONTENT_W * 0.25]
+    HDR_H = 22; ROW_H = 28; FONT_SIZE = 8
+    fn_b = _font(pdf_lang, bold=True); fn_r = _font(pdf_lang)
+    headers = [pt("check_items", pdf_lang),
+               "姓名/签名" if pdf_lang == "zh" else "Name / Signature",
+               "日期" if pdf_lang == "zh" else "Date"]
+    c.setFillColor(C_ACCENT)
+    c.rect(MARGIN_L, y - HDR_H, CONTENT_W, HDR_H, fill=1, stroke=0)
+    c.setFillColor(C_WHITE); c.setFont(fn_b, 8.5)
+    cx = MARGIN_L + 6
+    for i, h in enumerate(headers):
+        c.drawString(cx, y - HDR_H + 8, h)
+        cx += COL_WIDTHS[i]
+    y -= HDR_H
+    table_top = y
+    for i, (label, name, date_str) in enumerate(sigs):
+        if i % 2 == 0:
+            c.setFillColor(C_LIGHT)
+            c.rect(MARGIN_L, y - ROW_H, CONTENT_W, ROW_H, fill=1, stroke=0)
+        c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+        c.line(MARGIN_L, y - ROW_H, MARGIN_L + CONTENT_W, y - ROW_H)
+        cx_sep = MARGIN_L + COL_WIDTHS[0]
+        c.line(cx_sep, y, cx_sep, y - ROW_H)
+        cx_sep += COL_WIDTHS[1]
+        c.line(cx_sep, y, cx_sep, y - ROW_H)
+        c.setFillColor(C_ACCENT2); c.setFont(fn_b, FONT_SIZE)
+        c.drawString(MARGIN_L + 6, y - ROW_H + 10, str(label))
+        # Signature line
+        line_x1 = MARGIN_L + COL_WIDTHS[0] + 8
+        line_x2 = MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] - 8
+        if name:
+            c.setFillColor(C_PRIMARY); c.setFont(fn_r, FONT_SIZE)
+            c.drawString(line_x1, y - ROW_H + 10, str(name))
+        c.setStrokeColor(C_PRIMARY); c.setLineWidth(0.8)
+        c.line(line_x1, y - ROW_H + 6, line_x2, y - ROW_H + 6)
+        c.setFillColor(C_PRIMARY); c.setFont(fn_r, FONT_SIZE)
+        c.drawString(MARGIN_L + COL_WIDTHS[0] + COL_WIDTHS[1] + 6, y - ROW_H + 10, str(date_str))
+        y -= ROW_H
+    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+    c.rect(MARGIN_L, y, CONTENT_W, table_top - y, fill=0, stroke=1)
+    return y - 6
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PDF GENERATION
+# ══════════════════════════════════════════════════════════════════════════════
 def generate_pdf():
-    """Generate Die Cut Test PDF report - SIMPLIFIED VERSION"""
-    buffer = io.BytesIO()
-    
-    selected_city = st.session_state.selected_city
-    chinese_city = CHINESE_CITIES[selected_city]
     pdf_lang = st.session_state.pdf_language
-    
-    doc = DieCutPDF(
-        buffer, 
-        pagesize=A4,
-        topMargin=1.2*inch,
-        bottomMargin=0.8*inch,
-        leftMargin=0.6*inch,
-        rightMargin=0.6*inch,
-        pdf_language=pdf_lang,
-        selected_city=selected_city,
-        chinese_city=chinese_city
-    )
-    
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    # ========== DEFINE STYLES ==========
-    
-    primary_color = colors.HexColor('#667eea')
-    secondary_color = colors.HexColor('#764ba2')
-    dark_bg = colors.HexColor('#2c3e50')
-    success_color = colors.HexColor('#48bb78')
-    
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=primary_color,
-        spaceAfter=8,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-        spaceBefore=5
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'Subtitle',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=colors.HexColor('#666666'),
-        alignment=TA_CENTER,
-        spaceAfter=15
-    )
-    
-    section_header_style = ParagraphStyle(
-        'SectionHeader',
-        parent=styles['Heading2'],
-        fontSize=11,
-        textColor=dark_bg,
-        spaceBefore=12,
-        spaceAfter=8,
-        fontName='Helvetica-Bold',
-        leftIndent=0,
-        borderWidth=2,
-        borderColor=primary_color,
-        borderPadding=(0, 0, 0, 5),
-        backgroundColor=colors.HexColor('#f0f4ff')
-    )
-    
-    table_header_style = ParagraphStyle(
-        'TableHeader',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=colors.white,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-        backColor=primary_color
-    )
-    
-    if pdf_lang == "zh":
-        table_cell_style = ParagraphStyle(
-            'TableCell',
-            parent=styles['Normal'],
-            fontSize=9,
-            alignment=TA_CENTER,
-            fontName='Helvetica',
-            leading=10
-        )
-        
-        table_cell_bold_style = ParagraphStyle(
-            'TableCellBold',
-            parent=styles['Normal'],
-            fontSize=9,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold',
-            leading=10
-        )
-    else:
-        table_cell_style = ParagraphStyle(
-            'TableCell',
-            parent=styles['Normal'],
-            fontSize=9,
-            alignment=TA_LEFT,
-            fontName='Helvetica',
-            leading=10
-        )
-        
-        table_cell_bold_style = ParagraphStyle(
-            'TableCellBold',
-            parent=styles['Normal'],
-            fontSize=9,
-            alignment=TA_LEFT,
-            fontName='Helvetica-Bold',
-            leading=10
-        )
-    
-    table_cell_center_style = ParagraphStyle(
-        'TableCellCenter',
-        parent=styles['Normal'],
-        fontSize=9,
-        alignment=TA_CENTER,
-        fontName='Helvetica',
-        leading=10
-    )
-    
-    small_style = ParagraphStyle(
-        'SmallStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=9,
-        fontName='Helvetica',
-        textColor=colors.HexColor('#555555')
-    )
-    
-    def create_paragraph(text, style, bold=False, color=None):
-        """Create paragraph with appropriate styling"""
-        if text is None:
-            text = ""
-        elif not isinstance(text, str):
-            text = str(text)
-        
-        if bold and not hasattr(style, 'bold'):
-            style = ParagraphStyle(
-                f"BoldStyle_{hash(text)}",
-                parent=style,
-                fontName='Helvetica-Bold'
-            )
-        
-        if color:
-            style = ParagraphStyle(
-                f"ColoredStyle_{hash(text)}",
-                parent=style,
-                textColor=color
-            )
-            
-        return Paragraph(text, style)
-    
-    # ========== REPORT HEADER ==========
-    
-    title_text = get_pdf_text("title", pdf_lang)
-    elements.append(create_paragraph(title_text, title_style, bold=True))
-    
+    city     = st.session_state.selected_city
+    city_zh  = CHINESE_CITIES.get(city, city)
     china_tz = pytz.timezone('Asia/Shanghai')
-    current_time = datetime.now(china_tz)
-    
-    if pdf_lang == "zh":
-        subtitle_text = f"报告生成: {current_time.strftime('%Y年%m月%d日 %H时%M分')} | 测试地点: {chinese_city}"
-    else:
-        subtitle_text = f"Report Generated: {current_time.strftime('%Y-%m-%d %H:%M')} | Test Location: {selected_city}"
-    
-    elements.append(create_paragraph(subtitle_text, subtitle_style))
-    elements.append(Spacer(1, 8))
-    elements.append(Spacer(1, 12))
-    
-    # ========== BASIC INFORMATION ==========
-    
-    basic_info_title = create_paragraph(get_pdf_text("basic_info", pdf_lang), section_header_style, bold=True)
-    elements.append(basic_info_title)
-    
-    contract_no_val = get_pdf_display_value('contract_no', pdf_lang)
-    brand_val = get_pdf_display_value('brand', pdf_lang)
-    agent_factory_val = get_pdf_display_value('agent_factory', pdf_lang)
-    style_name_val = get_pdf_display_value('style_name', pdf_lang)
-    qty_val = get_pdf_display_value('qty', pdf_lang)
-    sales_val = get_pdf_display_value('sales', pdf_lang)
-    factory_style_val = get_pdf_display_value('factory_style', pdf_lang)
-    ship_date_val = st.session_state.get('ship_date', current_time)
-    
-    contract_no_val = get_display_text(contract_no_val)
-    brand_val = get_display_text(brand_val)
-    agent_factory_val = get_display_text(agent_factory_val)
-    style_name_val = get_display_text(style_name_val)
-    qty_val = get_display_text(qty_val)
-    sales_val = get_display_text(sales_val)
-    factory_style_val = get_display_text(factory_style_val)
-    
-    basic_data = []
-    
-    contract_label = get_pdf_text("contract_no", pdf_lang)
-    brand_label = get_pdf_text("brand", pdf_lang)
-    agent_label = get_pdf_text("agent_factory", pdf_lang)
-    
-    basic_data.append([
-        create_paragraph(f"{contract_label}", table_cell_bold_style, bold=True),
-        create_paragraph(contract_no_val, table_cell_style),
-        create_paragraph(f"{brand_label}", table_cell_bold_style, bold=True),
-        create_paragraph(brand_val, table_cell_style),
-        create_paragraph(f"{agent_label}", table_cell_bold_style, bold=True),
-        create_paragraph(agent_factory_val, table_cell_style)
-    ])
-    
-    style_label = get_pdf_text("style_name", pdf_lang)
-    qty_label = get_pdf_text("qty", pdf_lang)
-    sales_label = get_pdf_text("sales", pdf_lang)
-    
-    basic_data.append([
-        create_paragraph(f"{style_label}", table_cell_bold_style, bold=True),
-        create_paragraph(style_name_val, table_cell_style),
-        create_paragraph(f"{qty_label}", table_cell_bold_style, bold=True),
-        create_paragraph(qty_val, table_cell_style),
-        create_paragraph(f"{sales_label}", table_cell_bold_style, bold=True),
-        create_paragraph(sales_val, table_cell_style)
-    ])
-    
-    factory_label = get_pdf_text("factory_style", pdf_lang)
-    ship_label = get_pdf_text("ship_date", pdf_lang)
-    
-    if pdf_lang == "zh":
-        ship_date_formatted = safe_date_format(ship_date_val, '%Y年%m月%d日')
-    else:
-        ship_date_formatted = safe_date_format(ship_date_val, '%Y-%m-%d')
-    
-    basic_data.append([
-        create_paragraph(f"{factory_label}", table_cell_bold_style, bold=True),
-        create_paragraph(factory_style_val, table_cell_style),
-        create_paragraph(f"{ship_label}", table_cell_bold_style, bold=True),
-        create_paragraph(ship_date_formatted, table_cell_style),
-        create_paragraph("", table_cell_bold_style),
-        create_paragraph("", table_cell_style)
-    ])
-    
-    if pdf_lang == "zh":
-        basic_table = Table(basic_data, colWidths=[1.0*inch, 1.5*inch, 1.0*inch, 1.3*inch, 1.0*inch, 1.5*inch])
-    else:
-        basic_table = Table(basic_data, colWidths=[0.9*inch, 1.4*inch, 0.8*inch, 1.2*inch, 0.9*inch, 1.4*inch])
-    
-    basic_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#f7fafc'), colors.white]),
-        ('PADDING', (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(basic_table)
-    elements.append(Spacer(1, 12))
-    
-    # ========== SIZE & QUANTITY TABLE ==========
-    # SIMPLIFIED - NO CALCULATIONS, JUST DISPLAY
-    
+    now      = datetime.now(china_tz)
+    gen_time = now.strftime('%Y-%m-%d %H:%M')
+
+    def tx(text):
+        if pdf_lang == "en" or not openai_client:
+            return str(text) if text else ''
+        return translate_text_api(str(text) if text else '', "zh")
+
+    def loc(en_val, zh_val):
+        return zh_val if pdf_lang == "zh" else en_val
+
+    # ── Pull form data ────────────────────────────────────────────────────
+    contract_no   = pdf_val('contract_no',    pdf_lang)
+    brand_v       = pdf_val('brand',          pdf_lang)
+    agent_factory = pdf_val('agent_factory',  pdf_lang)
+    style_name    = pdf_val('style_name',     pdf_lang)
+    qty_v         = pdf_val('qty',            pdf_lang)
+    sales_v       = pdf_val('sales',          pdf_lang)
+    factory_style = pdf_val('factory_style',  pdf_lang)
+
+    die_cut_date_val   = st.session_state.get('die_cut_date',   now.date())
+    batch_test_date_val = st.session_state.get('batch_test_date', now.date())
+    ship_date_val      = st.session_state.get('ship_date',      now.date())
+    signature_date_val = st.session_state.get('signature_date', now.date())
+
+    def fmt_date(d):
+        if d is None: return ''
+        try:
+            if pdf_lang == "zh": return d.strftime('%Y年%m月%d日')
+            return d.strftime('%Y-%m-%d')
+        except: return str(d)
+
     size_data = st.session_state.size_data
-    
-    if size_data:
-        size_label = get_pdf_text("size", pdf_lang)
-        die_qty_label = get_pdf_text("die_qty", pdf_lang)
-        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
-        
-        qty_data = [[
-            create_paragraph(size_label, table_header_style, bold=True),
-            create_paragraph(die_qty_label, table_header_style, bold=True),
-            create_paragraph(batch_qty_label, table_header_style, bold=True)
-        ]]
-        
-        for item in size_data:
-            # Get display values - NO CONVERSIONS
-            size_val = item.get('size', '')
-            die_qty_val = item.get('die_qty', '')
-            batch_qty_val = item.get('batch_qty', '')
-            
-            # Clean for display
-            size_display = get_display_text(size_val) or '-'
-            die_qty_display = get_display_text(die_qty_val) or '-'
-            batch_qty_display = get_display_text(batch_qty_val) or '-'
-            
-            qty_data.append([
-                create_paragraph(size_display, table_cell_center_style),
-                create_paragraph(die_qty_display, table_cell_center_style),
-                create_paragraph(batch_qty_display, table_cell_center_style)
-            ])
-        
-        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
-        qty_table.setStyle(TableStyle([
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('PADDING', (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(qty_table)
-    else:
-        # Fallback to simple display
-        size_label = get_pdf_text("size", pdf_lang)
-        die_qty_label = get_pdf_text("die_qty", pdf_lang)
-        batch_qty_label = get_pdf_text("batch_qty", pdf_lang)
-        
-        size_val = get_pdf_display_value('size', pdf_lang)
-        die_qty_val = get_pdf_display_value('die_qty', pdf_lang)
-        batch_qty_val = get_pdf_display_value('batch_qty', pdf_lang)
-        
-        size_display = get_display_text(size_val) or '-'
-        die_qty_display = get_display_text(die_qty_val) or '-'
-        batch_qty_display = get_display_text(batch_qty_val) or '-'
-        
-        qty_data = [
-            [
-                create_paragraph(size_label, table_cell_bold_style, bold=True),
-                create_paragraph(die_qty_label, table_cell_bold_style, bold=True),
-                create_paragraph(batch_qty_label, table_cell_bold_style, bold=True)
-            ],
-            [
-                create_paragraph(size_display, table_cell_center_style),
-                create_paragraph(die_qty_display, table_cell_center_style),
-                create_paragraph(batch_qty_display, table_cell_center_style)
-            ]
-        ]
-        
-        qty_table = Table(qty_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
-        qty_table.setStyle(TableStyle([
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('PADDING', (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(qty_table)
-    
-    elements.append(Spacer(1, 15))
-    
-    # ========== MAIN CHECK POINTS ==========
-    
-    main_check_title = create_paragraph(get_pdf_text("main_check", pdf_lang), section_header_style, bold=True)
-    elements.append(main_check_title)
-    
-    check_header = [
-        create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("yes", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("no", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("comments", pdf_lang), table_header_style, bold=True)
+
+    # Check points
+    check_items_data = [
+        (pt("last_no_correct", pdf_lang),
+         st.session_state.get("last_no_yes", False), st.session_state.get("last_no_no", False),
+         tx(get_ev('last_no_comments'))),
+        (pt("color_matches", pdf_lang),
+         st.session_state.get("color_yes", False),   st.session_state.get("color_no", False),
+         tx(get_ev('color_comments'))),
+        (pt("tack_free", pdf_lang),
+         st.session_state.get("tack_free_yes", False), st.session_state.get("tack_free_no", False),
+         tx(get_ev('tack_free_comments'))),
+        (pt("size_run_match", pdf_lang),
+         st.session_state.get("size_run_yes", False), st.session_state.get("size_run_no", False),
+         tx(get_ev('size_run_comments'))),
+        (pt("fitting_correct", pdf_lang),
+         st.session_state.get("fitting_yes", False),  st.session_state.get("fitting_no", False),
+         tx(get_ev('fitting_comments'))),
+        (pt("top_sample_sent", pdf_lang),
+         st.session_state.get("top_sample_yes", False), st.session_state.get("top_sample_no", False),
+         tx(get_ev('top_sample_comments'))),
+        (pt("tech_comments_completed", pdf_lang),
+         st.session_state.get("tech_comments_yes", False), st.session_state.get("tech_comments_no", False),
+         tx(get_ev('tech_comments_description'))),
     ]
-    
-    check_data = [check_header]
-    
-    check_items = [
-        (get_pdf_text("last_no_correct", pdf_lang), "last_no_yes", "last_no_no", "last_no_comments"),
-        (get_pdf_text("color_matches", pdf_lang), "color_yes", "color_no", "color_comments"),
-        (get_pdf_text("tack_free", pdf_lang), "tack_free_yes", "tack_free_no", "tack_free_comments"),
-        (get_pdf_text("size_run_match", pdf_lang), "size_run_yes", "size_run_no", "size_run_comments"),
-        (get_pdf_text("fitting_correct", pdf_lang), "fitting_yes", "fitting_no", "fitting_comments"),
-        (get_pdf_text("top_sample_sent", pdf_lang), "top_sample_yes", "top_sample_no", "top_sample_comments"),
-    ]
-    
-    for item, yes_key, no_key, comment_key in check_items:
-        yes_check = "✓" if st.session_state.get(yes_key, False) else ""
-        no_check = "✓" if st.session_state.get(no_key, False) else ""
-        comment = get_pdf_display_value(comment_key, pdf_lang)
-        comment = get_display_text(comment)
-        
-        row = [
-            create_paragraph(item, table_cell_style),
-            create_paragraph(yes_check, table_cell_center_style),
-            create_paragraph(no_check, table_cell_center_style),
-            create_paragraph(comment if comment else "-", small_style)
-        ]
-        check_data.append(row)
-    
+
+    tech_specs_same    = st.session_state.get('tech_specs_same', False)
+    tech_specs_comment = tx(get_ev('tech_specs_comments'))
+
+    # Test results
     if pdf_lang == "zh":
-        check_table = Table(check_data, colWidths=[2.5*inch, 0.5*inch, 0.5*inch, 2.0*inch])
+        standards = {
+            "sole_bonding":      "边墙鞋≥2.0 N/mm\n其他≥3.0 N/mm",
+            "heel_attachment":   "≥500N",
+            "top_piece":         "≥140N",
+            "insole_perment":    "400N时变形量≤15%",
+            "straps_strength":   "女鞋≥200N\n男鞋≥250N\n弹性≥150N\n童鞋≥250N",
+            "toe_post":          "EVA和橡胶≥150N\n其他≥200N",
+        }
     else:
-        check_table = Table(check_data, colWidths=[2.2*inch, 0.4*inch, 0.4*inch, 2.6*inch])
-    
-    check_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (2, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('PADDING', (0, 0), (-1, -1), 4),
-        ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-    ]))
-    elements.append(check_table)
-    elements.append(Spacer(1, 15))
-    
-    # ========== TECHNICAL SPECIFICATIONS ==========
-    
-    tech_specs_title = create_paragraph(get_pdf_text("tech_specs", pdf_lang), section_header_style, bold=True)
-    elements.append(tech_specs_title)
-    
-    same_check = "✓" if st.session_state.get('tech_specs_same', False) else ""
-    tech_specs_comments_val = get_pdf_display_value('tech_specs_comments', pdf_lang)
-    tech_specs_comments_val = get_display_text(tech_specs_comments_val)
-    
-    same_label = get_pdf_text("same", pdf_lang)
-    if_not_label = get_pdf_text("if_not_same", pdf_lang)
-    
-    tech_data = [
-        [
-            create_paragraph(same_label, table_cell_bold_style, bold=True),
-            create_paragraph(same_check, table_cell_center_style),
-            create_paragraph(if_not_label, table_cell_bold_style, bold=True)
-        ],
-        [
-            create_paragraph("", table_cell_style),
-            create_paragraph("", table_cell_style),
-            create_paragraph(tech_specs_comments_val if tech_specs_comments_val else "-", table_cell_style)
-        ]
+        standards = {
+            "sole_bonding":      "Sidewall ≥2.0 N/mm\nOthers ≥3.0 N/mm",
+            "heel_attachment":   "≥500N",
+            "top_piece":         "≥140N",
+            "insole_perment":    "Deformation ≤15% at 400N",
+            "straps_strength":   "Women ≥200N / Men ≥250N\nElastic ≥150N / Children ≥250N",
+            "toe_post":          "EVA & rubber ≥150N\nOther ≥200N",
+        }
+
+    test_rows_data = [
+        (pt("sole_bonding",    pdf_lang), tx(get_ev('sole_bonding_result')),    standards["sole_bonding"],
+         st.session_state.get("sole_bonding_pass", False),    st.session_state.get("sole_bonding_fail", False)),
+        (pt("heel_attachment", pdf_lang), tx(get_ev('heel_attachment_result')), standards["heel_attachment"],
+         st.session_state.get("heel_attachment_pass", False), st.session_state.get("heel_attachment_fail", False)),
+        (pt("top_piece",       pdf_lang), tx(get_ev('top_piece_result')),       standards["top_piece"],
+         st.session_state.get("top_piece_pass", False),       st.session_state.get("top_piece_fail", False)),
+        (pt("insole_perment",  pdf_lang), tx(get_ev('insole_perment_result')),  standards["insole_perment"],
+         st.session_state.get("insole_perment_pass", False),  st.session_state.get("insole_perment_fail", False)),
+        (pt("straps_strength", pdf_lang), tx(get_ev('straps_strength_result')), standards["straps_strength"],
+         st.session_state.get("straps_strength_pass", False), st.session_state.get("straps_strength_fail", False)),
+        (pt("toe_post",        pdf_lang), tx(get_ev('toe_post_result')),        standards["toe_post"],
+         st.session_state.get("toe_post_pass", False),        st.session_state.get("toe_post_fail", False)),
     ]
-    
-    tech_table = Table(tech_data, colWidths=[1.0*inch, 0.4*inch, 4.2*inch])
-    tech_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (2, 0), colors.HexColor('#f0f4ff')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('PADDING', (0, 0), (-1, -1), 4),
-        ('SPAN', (2, 0), (2, -1)),
-    ]))
-    elements.append(tech_table)
-    elements.append(Spacer(1, 15))
-    
-    # ========== TEST RESULTS ==========
-    
-    test_results_title = create_paragraph(get_pdf_text("test_results", pdf_lang), section_header_style, bold=True)
-    elements.append(test_results_title)
-    
-    test_header = [
-        create_paragraph(get_pdf_text("check_items", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("result", pdf_lang), table_header_style, bold=True),
-        create_paragraph(get_pdf_text("client_standard", pdf_lang), table_header_style, bold=True),
-        create_paragraph("PASS/FAIL", table_header_style, bold=True)
+
+    # Signatures
+    sig_date_str = fmt_date(signature_date_val)
+    sigs = [
+        (pt("factory_rep",   pdf_lang), tx(get_ev('factory_representative')), sig_date_str),
+        (pt("gs_qc",         pdf_lang), tx(get_ev('gs_qc')),                  sig_date_str),
+        (pt("gs_tech",       pdf_lang), tx(get_ev('grandstep_technician')),   sig_date_str),
+        (pt("area_manager",  pdf_lang), tx(get_ev('area_manager')),           sig_date_str),
+        (pt("qa_manager",    pdf_lang), tx(get_ev('qa_manager')),             sig_date_str),
     ]
-    
-    test_data = [test_header]
-    
-    if pdf_lang == "zh":
-        test_items = [
-            (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
-             "边墙鞋≥2.0 N/mm\n其他≥3.0 N/mm"),
-            (get_pdf_text("heel_attachment", pdf_lang), "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail",
-             "≥500N"),
-            (get_pdf_text("top_piece", pdf_lang), "top_piece_result", "top_piece_pass", "top_piece_fail",
-             "≥140N"),
-            (get_pdf_text("insole_perment", pdf_lang), "insole_perment_result", "insole_perment_pass", "insole_perment_fail",
-             "400N时变形量≤15%"),
-            (get_pdf_text("straps_strength", pdf_lang), "straps_strength_result", "straps_strength_pass", "straps_strength_fail",
-             "女鞋≥200N\n男鞋≥250N\n弹性部位≥150N\n童鞋≥250N"),
-            (get_pdf_text("toe_post", pdf_lang), "toe_post_result", "toe_post_pass", "toe_post_fail",
-             "EVA和橡胶材料≥150N\n其他材料≥200N")
+
+    # ── Two-pass render ───────────────────────────────────────────────────
+    def _build(buf_out, total_pages_known):
+        c = rl_canvas.Canvas(buf_out, pagesize=A4)
+        fn_b = _font(pdf_lang, bold=True)
+        fn_r = _font(pdf_lang)
+        page_counter = [1]
+
+        def new_page():
+            c.showPage()
+            page_counter[0] += 1
+            draw_page_frame(c, page_counter[0], total_pages_known, pdf_lang, city, city_zh, gen_time)
+            return PAGE_H - HEADER_H - 20
+
+        def maybe_new_page(y, min_space=120):
+            if y < FOOTER_H + min_space:
+                return new_page()
+            return y
+
+        # ── PAGE 1 ──────────────────────────────────────────────────────
+        draw_page_frame(c, 1, total_pages_known, pdf_lang, city, city_zh, gen_time)
+        y = PAGE_H - HEADER_H - 20
+
+        # Cover banner
+        c.setFillColor(C_PRIMARY)
+        c.rect(MARGIN_L, y - 120, CONTENT_W, 120, fill=1, stroke=0)
+        c.setFillColor(C_ACCENT)
+        c.rect(MARGIN_L, y - 120, 8, 120, fill=1, stroke=0)
+        c.setFillColor(C_ACCENT)
+        c.rect(MARGIN_L, y - 6, CONTENT_W, 6, fill=1, stroke=0)
+
+        c.setFillColor(C_WHITE); c.setFont(fn_b, 20)
+        c.drawString(MARGIN_L + 24, y - 40, "Grand Step (H.K.) Ltd")
+        c.setFont(fn_r, 11)
+        c.setFillColor(colors.HexColor('#aab8ff'))
+        c.drawString(MARGIN_L + 24, y - 60,
+                     "斩刀试做报告" if pdf_lang == "zh" else "DIE CUT TEST REPORT")
+
+        pill_items = [
+            (loc("Die Cut Date", "斩刀日期"), fmt_date(die_cut_date_val)),
+            (loc("Location", "地点"), f"{city} {city_zh}" if pdf_lang == "zh" else city),
+            (loc("Language", "语言"), "中文" if pdf_lang == "zh" else "English"),
         ]
-    else:
-        test_items = [
-            (get_pdf_text("sole_bonding", pdf_lang), "sole_bonding_result", "sole_bonding_pass", "sole_bonding_fail",
-             "Sidewall shoes ≥2.0 N/mm\nOthers ≥3.0 N/mm"),
-            (get_pdf_text("heel_attachment", pdf_lang), "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail",
-             "≥500N"),
-            (get_pdf_text("top_piece", pdf_lang), "top_piece_result", "top_piece_pass", "top_piece_fail",
-             "≥140N"),
-            (get_pdf_text("insole_perment", pdf_lang), "insole_perment_result", "insole_perment_pass", "insole_perment_fail",
-             "Deformation ≤15%\nat 400N"),
-            (get_pdf_text("straps_strength", pdf_lang), "straps_strength_result", "straps_strength_pass", "straps_strength_fail",
-             "Women ≥200N\nMen ≥250N\nElastic ≥150N\nChildren ≥250N"),
-            (get_pdf_text("toe_post", pdf_lang), "toe_post_result", "toe_post_pass", "toe_post_fail",
-             "EVA & rubber ≥150N\nOther ≥200N")
+        px = MARGIN_L + 24
+        for lbl, val in pill_items:
+            c.setFillColor(colors.HexColor('#0d2244'))
+            pill_w = _text_width(f"{lbl}: {val}", 7) + 16
+            c.roundRect(px, y - 108, pill_w, 16, 4, fill=1, stroke=0)
+            c.setFillColor(colors.HexColor('#aab8ff')); c.setFont(fn_b, 7)
+            c.drawString(px + 8, y - 100, f"{lbl}:")
+            lbl_w = _text_width(lbl, 7) + 8
+            c.setFillColor(C_WHITE); c.setFont(fn_r, 7)
+            c.drawString(px + 8 + lbl_w, y - 100, val)
+            px += pill_w + 8
+        y -= 136
+
+        # ── 1. BASIC INFORMATION ─────────────────────────────────────────
+        y = draw_section_header(c, y, loc("1. BASIC INFORMATION", "1. 基本信息"), pdf_lang)
+
+        pairs = [
+            (loc("Contract No.", "订单号"),      contract_no or '—',
+             loc("Brand", "商标"),               brand_v or '—'),
+            (loc("Agent / Factory", "贸易商/工厂"), agent_factory or '—',
+             loc("Style Name", "型体"),          style_name or '—'),
+            (loc("QTY", "数量"),                 qty_v or '—',
+             loc("Sales", "销售"),               sales_v or '—'),
+            (loc("Factory Style", "工厂款号"),   factory_style or '—',
+             loc("Ship Date", "交期"),           fmt_date(ship_date_val)),
+            (loc("Die Cut Date", "斩刀日期"),    fmt_date(die_cut_date_val),
+             loc("Batch Test Date", "小批量日期"), fmt_date(batch_test_date_val)),
         ]
-    
-    for item, result_key, pass_key, fail_key, standard in test_items:
-        result = get_pdf_display_value(result_key, pdf_lang)
-        result = get_display_text(result)
-        
-        pass_check = st.session_state.get(pass_key, False)
-        fail_check = st.session_state.get(fail_key, False)
-        
-        if pass_check:
-            status = "PASS"
-            status_color = success_color
-        elif fail_check:
-            status = "FAIL"
-            status_color = colors.red
+        y = draw_two_col_kv(c, y, pairs, pdf_lang)
+        y -= 10
+
+        # ── 2. SIZE & QTY TABLE ──────────────────────────────────────────
+        y = maybe_new_page(y, 100)
+        y = draw_section_header(c, y, loc("2. SIZE & QUANTITY", "2. 尺码与数量"), pdf_lang)
+        if size_data:
+            y = draw_size_table(c, y, size_data, pdf_lang)
         else:
-            status = "-"
-            status_color = colors.HexColor('#666666')
-        
-        status_style = ParagraphStyle(
-            'StatusStyle',
-            parent=small_style,
-            textColor=status_color,
-            fontName='Helvetica-Bold',
-            alignment=TA_CENTER
-        )
-        
-        row = [
-            create_paragraph(item, table_cell_style),
-            create_paragraph(result if result else "-", table_cell_center_style),
-            create_paragraph(standard, small_style),
-            create_paragraph(status, status_style)
-        ]
-        test_data.append(row)
-    
-    if pdf_lang == "zh":
-        test_table = Table(test_data, colWidths=[2.0*inch, 1.0*inch, 2.0*inch, 1.0*inch])
-    else:
-        test_table = Table(test_data, colWidths=[1.8*inch, 0.9*inch, 1.8*inch, 0.9*inch])
-    
-    test_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('PADDING', (0, 0), (-1, -1), 4),
-        ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-    ]))
-    elements.append(test_table)
-    elements.append(Spacer(1, 15))
-    
-    # ========== SIGNATURES ==========
-    
-    signatures_title = create_paragraph(get_pdf_text("signatures", pdf_lang), section_header_style, bold=True)
-    elements.append(signatures_title)
-    
-    signature_date_val = st.session_state.get('signature_date', current_time)
-    
-    signatures = [
-        (get_pdf_text("factory_rep", pdf_lang), "factory_representative", get_pdf_text("signature_date", pdf_lang)),
-        (get_pdf_text("gs_qc", pdf_lang), "gs_qc", get_pdf_text("signature_date", pdf_lang)),
-        (get_pdf_text("gs_tech", pdf_lang), "grandstep_technician", get_pdf_text("signature_date", pdf_lang)),
-        (get_pdf_text("area_manager", pdf_lang), "area_manager", get_pdf_text("signature_date", pdf_lang)),
-        (get_pdf_text("qa_manager", pdf_lang), "qa_manager", get_pdf_text("signature_date", pdf_lang)),
-    ]
-    
-    if pdf_lang == "zh":
-        date_formatted = safe_date_format(signature_date_val, '%Y年%m月%d日')
-    else:
-        date_formatted = safe_date_format(signature_date_val, '%Y-%m-%d')
-    
-    sig_data = []
-    
-    header_style = ParagraphStyle(
-        'SignatureHeader',
-        parent=table_cell_bold_style,
-        fontSize=9,
-        alignment=TA_CENTER,
-        textColor=colors.white,
-        backColor=primary_color
-    )
-    
-    sig_data.append([
-        create_paragraph(get_pdf_text("check_items", pdf_lang), header_style),
-        create_paragraph("姓名/签名" if pdf_lang == "zh" else "Name/Signature", header_style),
-        create_paragraph("日期" if pdf_lang == "zh" else "Date", header_style)
-    ])
-    
-    for label, key, date_label in signatures:
-        value = get_pdf_display_value(key, pdf_lang)
-        value = get_display_text(value)
-        
-        sig_row = [
-            create_paragraph(label, table_cell_bold_style, bold=True),
-            create_paragraph(value if value else "___________________", table_cell_style),
-            create_paragraph(date_formatted, table_cell_center_style)
-        ]
-        sig_data.append(sig_row)
-    
-    if pdf_lang == "zh":
-        signatures_table = Table(sig_data, colWidths=[2.2*inch, 2.5*inch, 1.3*inch])
-    else:
-        signatures_table = Table(sig_data, colWidths=[2.0*inch, 2.5*inch, 1.5*inch])
-    
-    signatures_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('ALIGN', (2, 1), (2, -1), 'CENTER'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('PADDING', (0, 0), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (1, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.white),
-    ]))
-    
-    elements.append(signatures_table)
-    elements.append(Spacer(1, 15))
-    
-    # ========== FOOTER NOTES ==========
-    
-    updated_text = get_pdf_text("updated_2022", pdf_lang)
-    elements.append(create_paragraph(updated_text, 
-                                   ParagraphStyle(
-                                       'Updated',
-                                       parent=small_style,
-                                       alignment=TA_RIGHT,
-                                       fontSize=7
-                                   )))
-    
-    elements.append(Spacer(1, 8))
-    
-    disclaimer_text = get_pdf_text("disclaimer_text", pdf_lang)
-    elements.append(create_paragraph(disclaimer_text, small_style))
-    
-    # Build PDF
-    try:
-        doc.build(elements)
-    except Exception as e:
-        st.error(f"Error building PDF: {str(e)}")
-        raise e
-    
-    buffer.seek(0)
-    return buffer
+            c.setFillColor(C_GREY_TEXT); c.setFont(fn_r, 8)
+            c.drawString(MARGIN_L + 6, y - 14, loc("No size data entered.", "未输入尺码数据。"))
+            y -= 20
+        y -= 6
 
-# Sidebar
-with st.sidebar:
-    st.markdown(f'### {ICONS["settings"]} {get_text("settings")}')
-    
-    st.markdown(f'#### {ICONS["language"]} {get_text("language")}')
-    
-    ui_language = st.selectbox(
-        get_text("user_interface_language"),
-        ["English", "Mandarin"],
-        index=0 if st.session_state.ui_language == "en" else 1,
-        key="ui_lang_select"
-    )
-    
-    new_ui_lang = "en" if ui_language == "English" else "zh"
-    if new_ui_lang != st.session_state.ui_language:
-        st.session_state.ui_language = new_ui_lang
-        st.rerun()
-    
-    pdf_language = st.selectbox(
-        get_text("pdf_report_language"),
-        ["English", "Mandarin"],
-        index=0 if st.session_state.pdf_language == "en" else 1,
-        key="pdf_lang_select"
-    )
-    st.session_state.pdf_language = "en" if pdf_language == "English" else "zh"
-    
-    st.markdown(f'#### {ICONS["location"]} {get_text("location")}')
-    selected_city = st.selectbox(
-        get_text("select_location"),
-        list(CHINESE_CITIES.keys()),
-        index=list(CHINESE_CITIES.keys()).index(st.session_state.selected_city) 
-        if st.session_state.selected_city in CHINESE_CITIES else 0,
-        key="city_select"
-    )
-    st.session_state.selected_city = selected_city
-    
-    st.markdown(f"""
-    <div class="location-badge">
-        {ICONS["location"]} {selected_city} ({CHINESE_CITIES[selected_city]})
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown(f'#### {ICONS["time"]} {get_text("local_time")}')
-    china_tz = pytz.timezone('Asia/Shanghai')
-    current_time = datetime.now(china_tz)
-    st.metric(
-        get_text("local_time"), 
-        current_time.strftime('%H:%M:%S'),
-        current_time.strftime('%Y-%m-%d')
-    )
-    
-    st.markdown("---")
-    st.markdown(f'### {ICONS["info"]} {get_text("quick_guide")}')
-    st.info(f"""
-    {ICONS["info"]} **{get_text("quick_guide")}:**
-    1. {ICONS["basic_info"]} {get_text("basic_info")}
-    2. {ICONS["check"]} {get_text("main_check")}
-    3. {ICONS["test_results"]} {get_text("test_results")}
-    4. {ICONS["signatures"]} {get_text("signatures")}
-    5. {ICONS["generate"]} {get_text("generate_pdf")}
-    """)
+        # ── 3. MAIN CHECK POINTS ─────────────────────────────────────────
+        y = maybe_new_page(y, 160)
+        y = draw_section_header(c, y, loc("3. MAIN CHECK POINTS", "3. 主要核查内容"), pdf_lang)
 
-# Main Title
-st.markdown(f"""
-<div class="main-header">
-    {ICONS["title"]} {get_text("title")}
-</div>
+        check_col_labels = [
+            pt("check_items", pdf_lang),
+            pt("yes", pdf_lang),
+            pt("no", pdf_lang),
+            pt("comments", pdf_lang),
+        ]
+
+        # Render check table row-by-row with page breaks
+        COL_WIDTHS_CHK = [CONTENT_W * 0.42, CONTENT_W * 0.09, CONTENT_W * 0.09, CONTENT_W * 0.40]
+        HDR_H_CHK = 22; ROW_PAD_CHK = 6; FS_CHK = 8; LH_CHK = 13
+        col_inner_chk = [cw - 12 for cw in COL_WIDTHS_CHK]
+
+        def draw_check_header(cy):
+            c.setFillColor(C_ACCENT)
+            c.rect(MARGIN_L, cy - HDR_H_CHK, CONTENT_W, HDR_H_CHK, fill=1, stroke=0)
+            c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 8.5)
+            cx2 = MARGIN_L + 6
+            for ii, lbl in enumerate(check_col_labels):
+                c.drawString(cx2, cy - HDR_H_CHK + 8, lbl)
+                cx2 += COL_WIDTHS_CHK[ii]
+            return cy - HDR_H_CHK
+
+        y = draw_check_header(y)
+        chk_table_top = y
+
+        for ri, (item, yes_v, no_v, comment) in enumerate(check_items_data):
+            item_lines    = _wrap_text(item,    col_inner_chk[0], FS_CHK)
+            comment_lines = _wrap_text(comment, col_inner_chk[3], FS_CHK)
+            max_lines = max(len(item_lines), len(comment_lines), 1)
+            row_h = max_lines * LH_CHK + ROW_PAD_CHK * 2
+            if y - row_h < FOOTER_H + 20:
+                tb_h = chk_table_top - y
+                if tb_h > 0:
+                    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+                    c.rect(MARGIN_L, y, CONTENT_W, tb_h, fill=0, stroke=1)
+                y = new_page()
+                y = draw_check_header(y)
+                chk_table_top = y
+            if ri % 2 == 0:
+                c.setFillColor(C_LIGHT)
+                c.rect(MARGIN_L, y - row_h, CONTENT_W, row_h, fill=1, stroke=0)
+            c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+            c.line(MARGIN_L, y - row_h, MARGIN_L + CONTENT_W, y - row_h)
+            cx_sep = MARGIN_L
+            for cw in COL_WIDTHS_CHK[:-1]:
+                cx_sep += cw
+                c.line(cx_sep, y, cx_sep, y - row_h)
+            ty = y - ROW_PAD_CHK - LH_CHK + 3
+            c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), FS_CHK)
+            for ln in item_lines:
+                if ln: c.drawString(MARGIN_L + 6, ty, ln)
+                ty -= LH_CHK
+            mid_y = y - row_h / 2
+            yes_x = MARGIN_L + COL_WIDTHS_CHK[0] + COL_WIDTHS_CHK[1] / 2
+            no_x  = MARGIN_L + COL_WIDTHS_CHK[0] + COL_WIDTHS_CHK[1] + COL_WIDTHS_CHK[2] / 2
+            if yes_v:
+                c.setFillColor(C_GREEN); c.setFont(_font(pdf_lang, bold=True), 10)
+                c.drawCentredString(yes_x, mid_y - 4, "✓")
+            if no_v:
+                c.setFillColor(C_RED);   c.setFont(_font(pdf_lang, bold=True), 10)
+                c.drawCentredString(no_x, mid_y - 4, "✗")
+            ty = y - ROW_PAD_CHK - LH_CHK + 3
+            c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), FS_CHK)
+            for ln in comment_lines:
+                if ln: c.drawString(MARGIN_L + COL_WIDTHS_CHK[0] + COL_WIDTHS_CHK[1] + COL_WIDTHS_CHK[2] + 6, ty, ln)
+                ty -= LH_CHK
+            y -= row_h
+
+        tb_h = chk_table_top - y
+        if tb_h > 0:
+            c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+            c.rect(MARGIN_L, y, CONTENT_W, tb_h, fill=0, stroke=1)
+        y -= 10
+
+        # ── 4. TECHNICAL SPECS ───────────────────────────────────────────
+        y = maybe_new_page(y, 100)
+        y = draw_section_header(c, y, loc("4. TECHNICAL SPECIFICATIONS", "4. 技术规格"), pdf_lang)
+
+        same_label = pt("same", pdf_lang)
+        same_tick  = "✓" if tech_specs_same else "□"
+        spec_line  = f"{same_label}: {same_tick}    {pt('if_not_same', pdf_lang)}: {tech_specs_comment or '—'}"
+        y = draw_text_block(c, y, pt("tech_specs_compare", pdf_lang), spec_line, pdf_lang, C_ACCENT2)
+        y -= 6
+
+        # ── 5. TEST RESULTS ──────────────────────────────────────────────
+        y = maybe_new_page(y, 180)
+        y = draw_section_header(c, y, loc("5. TEST RESULTS", "5. 测试结果"), pdf_lang)
+
+        test_col_labels = [
+            pt("check_items", pdf_lang),
+            pt("result", pdf_lang),
+            pt("client_standard", pdf_lang),
+            "PASS / FAIL",
+        ]
+
+        COL_WIDTHS_TST = [CONTENT_W * 0.30, CONTENT_W * 0.18, CONTENT_W * 0.35, CONTENT_W * 0.17]
+        HDR_H_TST = 22; ROW_PAD_TST = 6; FS_TST = 8; LH_TST = 13
+        col_inner_tst = [cw - 12 for cw in COL_WIDTHS_TST]
+
+        def draw_test_header(cy):
+            c.setFillColor(C_ACCENT)
+            c.rect(MARGIN_L, cy - HDR_H_TST, CONTENT_W, HDR_H_TST, fill=1, stroke=0)
+            c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 8.5)
+            cx2 = MARGIN_L + 6
+            for ii, lbl in enumerate(test_col_labels):
+                c.drawString(cx2, cy - HDR_H_TST + 8, lbl)
+                cx2 += COL_WIDTHS_TST[ii]
+            return cy - HDR_H_TST
+
+        y = draw_test_header(y)
+        tst_table_top = y
+
+        for ri, (item, result, standard, pass_v, fail_v) in enumerate(test_rows_data):
+            item_lines     = _wrap_text(item,     col_inner_tst[0], FS_TST)
+            result_lines   = _wrap_text(result,   col_inner_tst[1], FS_TST)
+            standard_lines = _wrap_text(standard, col_inner_tst[2], FS_TST)
+            max_lines = max(len(item_lines), len(result_lines), len(standard_lines), 1)
+            row_h = max_lines * LH_TST + ROW_PAD_TST * 2
+            if y - row_h < FOOTER_H + 20:
+                tb_h = tst_table_top - y
+                if tb_h > 0:
+                    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+                    c.rect(MARGIN_L, y, CONTENT_W, tb_h, fill=0, stroke=1)
+                y = new_page()
+                y = draw_test_header(y)
+                tst_table_top = y
+            if ri % 2 == 0:
+                c.setFillColor(C_LIGHT)
+                c.rect(MARGIN_L, y - row_h, CONTENT_W, row_h, fill=1, stroke=0)
+            c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+            c.line(MARGIN_L, y - row_h, MARGIN_L + CONTENT_W, y - row_h)
+            cx_sep = MARGIN_L
+            for cw in COL_WIDTHS_TST[:-1]:
+                cx_sep += cw
+                c.line(cx_sep, y, cx_sep, y - row_h)
+            ty = y - ROW_PAD_TST - LH_TST + 3
+            c.setFillColor(C_ACCENT2); c.setFont(_font(pdf_lang, bold=True), FS_TST)
+            for ln in item_lines:
+                if ln: c.drawString(MARGIN_L + 6, ty, ln)
+                ty -= LH_TST
+            ty = y - ROW_PAD_TST - LH_TST + 3
+            c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), FS_TST)
+            for ln in result_lines:
+                if ln: c.drawString(MARGIN_L + COL_WIDTHS_TST[0] + 6, ty, ln)
+                ty -= LH_TST
+            ty = y - ROW_PAD_TST - LH_TST + 3
+            for ln in standard_lines:
+                if ln: c.drawString(MARGIN_L + COL_WIDTHS_TST[0] + COL_WIDTHS_TST[1] + 6, ty, ln)
+                ty -= LH_TST
+            mid_y = y - row_h / 2
+            pf_x = MARGIN_L + COL_WIDTHS_TST[0] + COL_WIDTHS_TST[1] + COL_WIDTHS_TST[2] + COL_WIDTHS_TST[3] / 2
+            if pass_v:
+                c.setFillColor(C_GREEN); c.setFont(_font(pdf_lang, bold=True), 8.5)
+                c.drawCentredString(pf_x, mid_y - 4, pt("pass_", pdf_lang))
+            elif fail_v:
+                c.setFillColor(C_RED);   c.setFont(_font(pdf_lang, bold=True), 8.5)
+                c.drawCentredString(pf_x, mid_y - 4, pt("fail_", pdf_lang))
+            else:
+                c.setFillColor(C_GREY_TEXT); c.setFont(_font(pdf_lang), 8)
+                c.drawCentredString(pf_x, mid_y - 4, "—")
+            y -= row_h
+
+        tb_h = tst_table_top - y
+        if tb_h > 0:
+            c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+            c.rect(MARGIN_L, y, CONTENT_W, tb_h, fill=0, stroke=1)
+        y -= 10
+
+        # ── 6. SIGNATURES ────────────────────────────────────────────────
+        y = maybe_new_page(y, 200)
+        y = draw_section_header(c, y, loc("6. SIGNATURES & APPROVALS", "6. 签名与批准"), pdf_lang)
+
+        COL_WIDTHS_SIG = [CONTENT_W * 0.35, CONTENT_W * 0.40, CONTENT_W * 0.25]
+        HDR_H_SIG = 22; ROW_H_SIG = 28; FS_SIG = 8
+        sig_headers = [pt("check_items", pdf_lang),
+                       "姓名/签名" if pdf_lang == "zh" else "Name / Signature",
+                       "日期" if pdf_lang == "zh" else "Date"]
+        c.setFillColor(C_ACCENT)
+        c.rect(MARGIN_L, y - HDR_H_SIG, CONTENT_W, HDR_H_SIG, fill=1, stroke=0)
+        c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 8.5)
+        cx2 = MARGIN_L + 6
+        for h in sig_headers:
+            c.drawString(cx2, y - HDR_H_SIG + 8, h)
+            cx2 += COL_WIDTHS_SIG[len(sig_headers) - len(sig_headers)]  # iterate properly
+        # Redraw properly
+        c.setFillColor(C_ACCENT)
+        c.rect(MARGIN_L, y - HDR_H_SIG, CONTENT_W, HDR_H_SIG, fill=1, stroke=0)
+        c.setFillColor(C_WHITE); c.setFont(_font(pdf_lang, bold=True), 8.5)
+        offsets = [0, COL_WIDTHS_SIG[0], COL_WIDTHS_SIG[0] + COL_WIDTHS_SIG[1]]
+        for oi, h in zip(offsets, sig_headers):
+            c.drawString(MARGIN_L + oi + 6, y - HDR_H_SIG + 8, h)
+        y -= HDR_H_SIG
+        sig_table_top = y
+
+        for ri, (label, name, date_str) in enumerate(sigs):
+            if y - ROW_H_SIG < FOOTER_H + 20:
+                tb_h = sig_table_top - y
+                if tb_h > 0:
+                    c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+                    c.rect(MARGIN_L, y, CONTENT_W, tb_h, fill=0, stroke=1)
+                y = new_page()
+                sig_table_top = y
+            if ri % 2 == 0:
+                c.setFillColor(C_LIGHT)
+                c.rect(MARGIN_L, y - ROW_H_SIG, CONTENT_W, ROW_H_SIG, fill=1, stroke=0)
+            c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.3)
+            c.line(MARGIN_L, y - ROW_H_SIG, MARGIN_L + CONTENT_W, y - ROW_H_SIG)
+            c.line(MARGIN_L + COL_WIDTHS_SIG[0], y, MARGIN_L + COL_WIDTHS_SIG[0], y - ROW_H_SIG)
+            c.line(MARGIN_L + COL_WIDTHS_SIG[0] + COL_WIDTHS_SIG[1], y,
+                   MARGIN_L + COL_WIDTHS_SIG[0] + COL_WIDTHS_SIG[1], y - ROW_H_SIG)
+            c.setFillColor(C_ACCENT2); c.setFont(_font(pdf_lang, bold=True), FS_SIG)
+            c.drawString(MARGIN_L + 6, y - ROW_H_SIG + 10, str(label))
+            line_x1 = MARGIN_L + COL_WIDTHS_SIG[0] + 8
+            line_x2 = MARGIN_L + COL_WIDTHS_SIG[0] + COL_WIDTHS_SIG[1] - 8
+            if name:
+                c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), FS_SIG)
+                c.drawString(line_x1, y - ROW_H_SIG + 10, str(name))
+            c.setStrokeColor(C_PRIMARY); c.setLineWidth(0.8)
+            c.line(line_x1, y - ROW_H_SIG + 6, line_x2, y - ROW_H_SIG + 6)
+            c.setFillColor(C_PRIMARY); c.setFont(_font(pdf_lang), FS_SIG)
+            c.drawString(MARGIN_L + COL_WIDTHS_SIG[0] + COL_WIDTHS_SIG[1] + 6, y - ROW_H_SIG + 10, str(date_str))
+            y -= ROW_H_SIG
+
+        tb_h = sig_table_top - y
+        if tb_h > 0:
+            c.setStrokeColor(C_GREY_LINE); c.setLineWidth(0.5)
+            c.rect(MARGIN_L, y, CONTENT_W, tb_h, fill=0, stroke=1)
+        y -= 16
+
+        # ── Disclaimer & note ────────────────────────────────────────────
+        y = maybe_new_page(y, 60)
+        upd = pt("updated_2022", pdf_lang)
+        disc = pt("disclaimer_text", pdf_lang)
+        c.setFillColor(C_GREY_TEXT); c.setFont(_font(pdf_lang), 7.5)
+        c.drawRightString(MARGIN_L + CONTENT_W, y, upd)
+        y -= 12
+        disc_lines = _wrap_text(disc, CONTENT_W - 20, 7.5)
+        for ln in disc_lines:
+            if ln: c.drawString(MARGIN_L, y, ln)
+            y -= 11
+
+        c.save()
+        return page_counter[0]
+
+    # Pass 1
+    count_buf = io.BytesIO()
+    actual_total = _build(count_buf, 99)
+    # Pass 2
+    buf = io.BytesIO()
+    _build(buf, actual_total)
+    buf.seek(0)
+    return buf
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STREAMLIT UI
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown("""
+<style>
+  .main-header{font-size:2.6rem;font-weight:800;text-align:center;
+    color:#4299E1;margin-bottom:1.5rem;padding:0.5rem;}
+  .section-header{font-size:1.4rem;font-weight:700;color:#1a1a2e;
+    margin:2rem 0 1rem;padding:0.7rem 1.2rem;
+    background:linear-gradient(135deg,#f0f4ff 0%,#dde4ff 100%);
+    border-radius:10px;border-left:5px solid #e94560;}
+  .stButton>button{background:linear-gradient(135deg,#1a1a2e 0%,#e94560 100%);
+    color:white;font-size:1.1rem;font-weight:600;padding:0.9rem 2rem;
+    border-radius:10px;border:none;width:100%;transition:all .3s;}
+  .stButton>button:hover{transform:translateY(-2px);box-shadow:0 8px 16px rgba(233,69,96,.35);}
+  .footer{text-align:center;padding:1.5rem;
+    background:linear-gradient(135deg,#f0f4ff 0%,#dde4ff 100%);
+    border-radius:12px;margin-top:2rem;border-top:3px solid #e94560;}
+  .location-badge{display:inline-flex;align-items:center;gap:6px;
+    background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);
+    color:white;padding:.4rem .9rem;border-radius:20px;font-weight:600;font-size:.85rem;}
+</style>
 """, unsafe_allow_html=True)
 
-# Create tabs
-tab1, tab2, tab3, tab4 = st.tabs([
-    f"{ICONS['basic_info']} {get_text('basic_info')}",
-    f"{ICONS['check']} {get_text('main_check')}",
-    f"{ICONS['test_results']} {get_text('test_results')}",
-    f"{ICONS['signatures']} {get_text('signatures')}"
-])
+# ── Sidebar ────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### ⚙️ Settings")
 
-with tab1:
-    st.markdown(f"""
-    <div class="section-header">
-        <span class="section-header-icon">{ICONS["basic_info"]}</span>
-        {get_text("basic_info")}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        die_cut_date = st.date_input(
-            f"{ICONS['calendar']} {get_text('die_cut_date')}",
-            datetime.now(),
-            key="die_cut_date"
-        )
-    with col2:
-        batch_test_date = st.date_input(
-            f"{ICONS['calendar']} {get_text('batch_test_date')}",
-            datetime.now(),
-            key="batch_test_date"
-        )
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        contract_no_display = get_display_value('contract_no')
-        contract_no_input = st.text_input(
-            f"{ICONS['info']} {get_text('contract_no')}", 
-            value=contract_no_display,
-            placeholder="CON-2024-001",
-            key="contract_no_input"
-        )
-        if contract_no_input != contract_no_display:
-            update_english_value('contract_no', contract_no_input)
-        
-        style_name_display = get_display_value('style_name')
-        style_name_input = st.text_input(
-            f"{ICONS['style']} {get_text('style_name')}", 
-            value=style_name_display,
-            placeholder="STYLE-2024-001",
-            key="style_name_input"
-        )
-        if style_name_input != style_name_display:
-            update_english_value('style_name', style_name_input)
-        
-        factory_style_display = get_display_value('factory_style')
-        factory_style_input = st.text_input(
-            f"{ICONS['factory']} {get_text('factory_style')}", 
-            value=factory_style_display,
-            placeholder="FAC-STYLE-001",
-            key="factory_style_input"
-        )
-        if factory_style_input != factory_style_display:
-            update_english_value('factory_style', factory_style_input)
-    
-    with col2:
-        brand_display = get_display_value('brand')
-        brand_input = st.text_input(
-            f"{ICONS['brand']} {get_text('brand')}", 
-            value=brand_display,
-            placeholder="Brand Name",
-            key="brand_input"
-        )
-        if brand_input != brand_display:
-            update_english_value('brand', brand_input)
-        
-        qty_display = get_display_value('qty')
-        qty_input = st.text_input(
-            f"{ICONS['quantity']} {get_text('qty')}", 
-            value=qty_display,
-            placeholder="1000 pairs",
-            key="qty_input"
-        )
-        if qty_input != qty_display:
-            update_english_value('qty', qty_input)
-        
-        agent_factory_display = get_display_value('agent_factory')
-        agent_factory_input = st.text_input(
-            f"{ICONS['factory']} {get_text('agent_factory')}", 
-            value=agent_factory_display,
-            placeholder="Agent & Factory Name",
-            key="agent_factory_input"
-        )
-        if agent_factory_input != agent_factory_display:
-            update_english_value('agent_factory', agent_factory_input)
-        
-        sales_display = get_display_value('sales')
-        sales_input = st.text_input(
-            f"{ICONS['sales']} {get_text('sales')}", 
-            value=sales_display,
-            placeholder="Sales Representative",
-            key="sales_input"
-        )
-        if sales_input != sales_display:
-            update_english_value('sales', sales_input)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        ship_date = st.date_input(
-            f"{ICONS['calendar']} {get_text('ship_date')}", 
-            datetime.now(),
-            key="ship_date"
-        )
-    
-    st.markdown(f"""
-    <div class="section-header" style="margin-top: 30px;">
-        <span class="section-header-icon">{ICONS["measure"]}</span>
-        {get_text("size_table_title")}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="size-table-container">', unsafe_allow_html=True)
-    
-    col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
-    with col1:
-        st.markdown(f"**{get_text('size')}**")
-    with col2:
-        st.markdown(f"**{get_text('die_qty')}**")
-    with col3:
-        st.markdown(f"**{get_text('batch_qty')}**")
-    with col4:
-        st.markdown("**&nbsp;**")
-    
-    for i, size_item in enumerate(st.session_state.size_data):
-        col1, col2, col3, col4 = st.columns([3, 3, 3, 1])
-        with col1:
-            size_key = f"size_{i}"
-            size_val = st.text_input(
-                "Size",
-                value=size_item.get('size', ''),
-                placeholder="US 8, EU 41",
-                key=size_key,
-                label_visibility="collapsed"
-            )
-            st.session_state.size_data[i]['size'] = size_val
-        with col2:
-            die_qty_key = f"die_qty_{i}"
-            die_qty_val = st.text_input(
-                "Die Qty",
-                value=size_item.get('die_qty', ''),
-                placeholder="50",
-                key=die_qty_key,
-                label_visibility="collapsed"
-            )
-            st.session_state.size_data[i]['die_qty'] = die_qty_val
-        with col3:
-            batch_qty_key = f"batch_qty_{i}"
-            batch_qty_val = st.text_input(
-                "Batch Qty",
-                value=size_item.get('batch_qty', ''),
-                placeholder="200",
-                key=batch_qty_key,
-                label_visibility="collapsed"
-            )
-            st.session_state.size_data[i]['batch_qty'] = batch_qty_val
-        with col4:
-            if st.button(f"❌", key=f"remove_{i}", help=get_text("remove_size")):
-                remove_size_row(i)
-                st.rerun()
-    
-    if st.button(f"{ICONS['quantity']} {get_text('add_size')}", use_container_width=True):
-        add_size_row()
+    st.markdown(f"#### 🌐 {t('ui_lang')}")
+    ui_choice = st.selectbox(t('ui_lang'), ["English", "中文 (Mandarin)"],
+                             index=0 if st.session_state.ui_language == "en" else 1,
+                             key="ui_lang_select", label_visibility="collapsed")
+    new_ui = "en" if ui_choice == "English" else "zh"
+    if new_ui != st.session_state.ui_language:
+        st.session_state.ui_language = new_ui
+        st.session_state.translation_cache = {}
         st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
 
+    st.markdown(f"#### 📄 {t('pdf_lang')}")
+    pdf_choice = st.selectbox(t('pdf_lang'), ["English", "中文 (Mandarin)"],
+                              index=0 if st.session_state.pdf_language == "en" else 1,
+                              key="pdf_lang_select", label_visibility="collapsed")
+    st.session_state.pdf_language = "en" if pdf_choice == "English" else "zh"
+
+    st.markdown("#### 📍 Location")
+    city_keys = list(CHINESE_CITIES.keys())
+    city_idx  = city_keys.index(st.session_state.selected_city) if st.session_state.selected_city in city_keys else 0
+    sel_city  = st.selectbox("Location", city_keys, index=city_idx,
+                             key="city_select", label_visibility="collapsed")
+    st.session_state.selected_city = sel_city
+    st.markdown(f'<div class="location-badge">📍 {sel_city} ({CHINESE_CITIES.get(sel_city,"")})</div>',
+                unsafe_allow_html=True)
+
+    st.markdown("#### 🕐 Local Time")
+    china_tz = pytz.timezone('Asia/Shanghai')
+    now_cn   = datetime.now(china_tz)
+    st.metric("Local Time", now_cn.strftime('%H:%M:%S'), now_cn.strftime('%Y-%m-%d'))
+
+    if openai_client:
+        st.success(f"✅ {t('translation_active')}")
+    else:
+        st.warning(f"⚠️ {t('translation_off')}")
+
+    st.markdown("---")
+    st.markdown("### ℹ️ Quick Guide")
+    for step in ["1. Fill Basic Info", "2. Complete Check Points", "3. Enter Test Results",
+                 "4. Add Signatures", "5. Generate PDF"]:
+        st.write(step)
+
+# ── Main header ────────────────────────────────────────────────────────────
+st.markdown(f'<div class="main-header">✂️ {t("title")}</div>', unsafe_allow_html=True)
+
+tab1, tab2, tab3, tab4 = st.tabs([t("tab_basic"), t("tab_check"), t("tab_test"), t("tab_sign")])
+
+# ══════════════════════════════════════════════════════════════════════════════
+with tab1:
+    st.markdown(f'<div class="section-header">📋 {t("basic_info")}</div>', unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.date_input(f"📅 {t('die_cut_date')}",   datetime.now().date(), key="die_cut_date")
+    with c2:
+        st.date_input(f"📅 {t('batch_test_date')}", datetime.now().date(), key="batch_test_date")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        v = display_val('contract_no')
+        inp = st.text_input(f"📄 {t('contract_no')}", value=v, placeholder="CON-2024-001", key="contract_no_inp")
+        if inp != v: set_ev('contract_no', inp)
+
+        v = display_val('style_name')
+        inp = st.text_input(f"👕 {t('style_name')}", value=v, placeholder="STYLE-2024-001", key="style_name_inp")
+        if inp != v: set_ev('style_name', inp)
+
+        v = display_val('qty')
+        inp = st.text_input(f"🔢 {t('qty')}", value=v, placeholder="1000 pairs", key="qty_inp")
+        if inp != v: set_ev('qty', inp)
+
+        v = display_val('factory_style')
+        inp = st.text_input(f"🏭 {t('factory_style')}", value=v, placeholder="FAC-001", key="factory_style_inp")
+        if inp != v: set_ev('factory_style', inp)
+
+    with c2:
+        v = display_val('brand')
+        inp = st.text_input(f"🏷️ {t('brand')}", value=v, placeholder="Brand Name", key="brand_inp")
+        if inp != v: set_ev('brand', inp)
+
+        v = display_val('agent_factory')
+        inp = st.text_input(f"🏭 {t('agent_factory')}", value=v, placeholder="Agent & Factory", key="agent_factory_inp")
+        if inp != v: set_ev('agent_factory', inp)
+
+        v = display_val('sales')
+        inp = st.text_input(f"👔 {t('sales')}", value=v, placeholder="Sales Rep", key="sales_inp")
+        if inp != v: set_ev('sales', inp)
+
+        st.date_input(f"📅 {t('ship_date')}", datetime.now().date(), key="ship_date")
+
+    st.markdown(f'<div class="section-header">📏 {t("size_table_title")}</div>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns([3, 3, 3, 1])
+    c1.markdown(f"**{t('size')}**"); c2.markdown(f"**{t('die_qty')}**")
+    c3.markdown(f"**{t('batch_qty')}**"); c4.markdown("&nbsp;")
+
+    for i, item in enumerate(st.session_state.size_data):
+        c1, c2, c3, c4 = st.columns([3, 3, 3, 1])
+        with c1:
+            v = st.text_input("Size", value=item.get('size', ''), placeholder="US 8", key=f"size_{i}", label_visibility="collapsed")
+            st.session_state.size_data[i]['size'] = v
+        with c2:
+            v = st.text_input("Die", value=item.get('die_qty', ''), placeholder="50", key=f"die_qty_{i}", label_visibility="collapsed")
+            st.session_state.size_data[i]['die_qty'] = v
+        with c3:
+            v = st.text_input("Batch", value=item.get('batch_qty', ''), placeholder="200", key=f"batch_qty_{i}", label_visibility="collapsed")
+            st.session_state.size_data[i]['batch_qty'] = v
+        with c4:
+            if st.button("❌", key=f"remove_{i}"):
+                remove_size_row(i); st.rerun()
+
+    if st.button(f"➕ {t('add_size')}", use_container_width=True):
+        add_size_row(); st.rerun()
+
+# ══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown(f"""
-    <div class="section-header">
-        <span class="section-header-icon">{ICONS["main_check"]}</span>
-        {get_text("main_check")}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_left, col_right = st.columns(2)
-    
-    with col_left:
-        st.markdown(f"#### {ICONS['check']} {get_text('check_items')}")
-        
-        st.markdown(f"**{get_text('last_no_correct')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            last_no_yes = st.checkbox(get_text('yes'), key="last_no_yes")
-        with col2:
-            last_no_no = st.checkbox(get_text('no'), key="last_no_no")
-        
-        last_no_comments_display = get_display_value('last_no_comments')
-        last_no_comments_input = st.text_area(
-            get_text('comments'),
-            value=last_no_comments_display,
-            placeholder=f"{get_text('comments')}...",
-            height=60,
-            key="last_no_comments_input",
-            label_visibility="collapsed"
-        )
-        if last_no_comments_input != last_no_comments_display:
-            update_english_value('last_no_comments', last_no_comments_input)
-        
-        st.markdown(f"**{get_text('color_matches')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            color_yes = st.checkbox(get_text('yes'), key="color_yes")
-        with col2:
-            color_no = st.checkbox(get_text('no'), key="color_no")
-        
-        color_comments_display = get_display_value('color_comments')
-        color_comments_input = st.text_area(
-            get_text('comments'),
-            value=color_comments_display,
-            placeholder=f"{get_text('comments')}...",
-            height=60,
-            key="color_comments_input",
-            label_visibility="collapsed"
-        )
-        if color_comments_input != color_comments_display:
-            update_english_value('color_comments', color_comments_input)
-        
-        st.markdown(f"**{get_text('tack_free')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            tack_free_yes = st.checkbox(get_text('yes'), key="tack_free_yes")
-        with col2:
-            tack_free_no = st.checkbox(get_text('no'), key="tack_free_no")
-        
-        tack_free_comments_display = get_display_value('tack_free_comments')
-        tack_free_comments_input = st.text_area(
-            get_text('comments'),
-            value=tack_free_comments_display,
-            placeholder=f"{get_text('comments')}...",
-            height=60,
-            key="tack_free_comments_input",
-            label_visibility="collapsed"
-        )
-        if tack_free_comments_input != tack_free_comments_display:
-            update_english_value('tack_free_comments', tack_free_comments_input)
-        
-        st.markdown(f"**{get_text('tech_specs_compare')}**")
-        tech_specs_same = st.checkbox(get_text('same'), key="tech_specs_same")
-        
-        tech_specs_comments_display = get_display_value('tech_specs_comments')
-        tech_specs_comments_input = st.text_area(
-            get_text('if_not_same'),
-            value=tech_specs_comments_display,
-            placeholder=f"{get_text('if_not_same')}...",
-            height=80,
-            key="tech_specs_comments_input",
-            label_visibility="visible"
-        )
-        if tech_specs_comments_input != tech_specs_comments_display:
-            update_english_value('tech_specs_comments', tech_specs_comments_input)
-    
-    with col_right:
-        st.markdown(f"#### {ICONS['check']} {get_text('check_items')}")
-        
-        st.markdown(f"**{get_text('size_run_match')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            size_run_yes = st.checkbox(get_text('yes'), key="size_run_yes")
-        with col2:
-            size_run_no = st.checkbox(get_text('no'), key="size_run_no")
-        
-        size_run_comments_display = get_display_value('size_run_comments')
-        size_run_comments_input = st.text_area(
-            get_text('comments'),
-            value=size_run_comments_display,
-            placeholder=f"{get_text('comments')}...",
-            height=60,
-            key="size_run_comments_input",
-            label_visibility="collapsed"
-        )
-        if size_run_comments_input != size_run_comments_display:
-            update_english_value('size_run_comments', size_run_comments_input)
-        
-        st.markdown(f"**{get_text('fitting_correct')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            fitting_yes = st.checkbox(get_text('yes'), key="fitting_yes")
-        with col2:
-            fitting_no = st.checkbox(get_text('no'), key="fitting_no")
-        
-        fitting_comments_display = get_display_value('fitting_comments')
-        fitting_comments_input = st.text_area(
-            get_text('comments'),
-            value=fitting_comments_display,
-            placeholder=f"{get_text('comments')}...",
-            height=60,
-            key="fitting_comments_input",
-            label_visibility="collapsed"
-        )
-        if fitting_comments_input != fitting_comments_display:
-            update_english_value('fitting_comments', fitting_comments_input)
-        
-        st.markdown(f"**{get_text('top_sample_sent')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            top_sample_yes = st.checkbox(get_text('yes'), key="top_sample_yes")
-        with col2:
-            top_sample_no = st.checkbox(get_text('no'), key="top_sample_no")
-        
-        top_sample_comments_display = get_display_value('top_sample_comments')
-        top_sample_comments_input = st.text_area(
-            get_text('comments'),
-            value=top_sample_comments_display,
-            placeholder=f"{get_text('comments')}...",
-            height=60,
-            key="top_sample_comments_input",
-            label_visibility="collapsed"
-        )
-        if top_sample_comments_input != top_sample_comments_display:
-            update_english_value('top_sample_comments', top_sample_comments_input)
-        
-        st.markdown(f"**{get_text('tech_comments_completed')}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            tech_comments_yes = st.checkbox(get_text('yes'), key="tech_comments_yes")
-        with col2:
-            tech_comments_no = st.checkbox(get_text('no'), key="tech_comments_no")
-        
-        tech_comments_description_display = get_display_value('tech_comments_description')
-        tech_comments_description_input = st.text_area(
-            get_text('if_not_same'),
-            value=tech_comments_description_display,
-            placeholder=f"{get_text('if_not_same')}...",
-            height=80,
-            key="tech_comments_description_input",
-            label_visibility="visible"
-        )
-        if tech_comments_description_input != tech_comments_description_display:
-            update_english_value('tech_comments_description', tech_comments_description_input)
+    st.markdown(f'<div class="section-header">✓ {t("main_check")}</div>', unsafe_allow_html=True)
 
+    cl, cr = st.columns(2)
+
+    check_items_left = [
+        ("last_no_correct", "last_no_yes", "last_no_no", "last_no_comments"),
+        ("color_matches",   "color_yes",   "color_no",   "color_comments"),
+        ("tack_free",       "tack_free_yes","tack_free_no","tack_free_comments"),
+    ]
+    check_items_right = [
+        ("size_run_match",         "size_run_yes",      "size_run_no",      "size_run_comments"),
+        ("fitting_correct",        "fitting_yes",       "fitting_no",       "fitting_comments"),
+        ("top_sample_sent",        "top_sample_yes",    "top_sample_no",    "top_sample_comments"),
+        ("tech_comments_completed","tech_comments_yes", "tech_comments_no", "tech_comments_description"),
+    ]
+
+    for col_obj, items in [(cl, check_items_left), (cr, check_items_right)]:
+        with col_obj:
+            for lbl_key, yes_key, no_key, comment_key in items:
+                st.markdown(f"**{t(lbl_key)}**")
+                c1, c2 = st.columns(2)
+                with c1: st.checkbox(t('yes'), key=yes_key)
+                with c2: st.checkbox(t('no'),  key=no_key)
+                v = display_val(comment_key)
+                inp = st.text_area(t('comments'), value=v, height=60, key=f"{comment_key}_inp", label_visibility="collapsed")
+                if inp != v: set_ev(comment_key, inp)
+                st.markdown("---")
+
+    st.markdown(f"**{t('tech_specs_compare')}**")
+    st.checkbox(t('same'), key="tech_specs_same")
+    v = display_val('tech_specs_comments')
+    inp = st.text_area(t('if_not_same'), value=v, height=80, key="tech_specs_comments_inp")
+    if inp != v: set_ev('tech_specs_comments', inp)
+
+# ══════════════════════════════════════════════════════════════════════════════
 with tab3:
-    st.markdown(f"""
-    <div class="section-header">
-        <span class="section-header-icon">{ICONS["test_results"]}</span>
-        {get_text("test_results")}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_left, col_right = st.columns(2)
-    
-    with col_left:
-        st.markdown(f"#### {ICONS['test']} {get_text('test_results')}")
-        
-        st.markdown(f"**{get_text('sole_bonding')}**")
-        sole_bonding_result_display = get_display_value('sole_bonding_result')
-        sole_bonding_result_input = st.text_input(
-            f"{get_text('result')}",
-            value=sole_bonding_result_display,
-            placeholder=f"{get_text('result')}...",
-            key="sole_bonding_result_input",
-            label_visibility="collapsed"
-        )
-        if sole_bonding_result_input != sole_bonding_result_display:
-            update_english_value('sole_bonding_result', sole_bonding_result_input)
-        
-        col_pass, col_fail = st.columns(2)
-        with col_pass:
-            sole_bonding_pass = st.checkbox("PASS", key="sole_bonding_pass")
-        with col_fail:
-            sole_bonding_fail = st.checkbox("FAIL", key="sole_bonding_fail")
-        
-        st.markdown(f"**{get_text('top_piece')}**")
-        top_piece_result_display = get_display_value('top_piece_result')
-        top_piece_result_input = st.text_input(
-            f"{get_text('result')}",
-            value=top_piece_result_display,
-            placeholder=f"{get_text('result')}...",
-            key="top_piece_result_input",
-            label_visibility="collapsed"
-        )
-        if top_piece_result_input != top_piece_result_display:
-            update_english_value('top_piece_result', top_piece_result_input)
-        
-        col_pass, col_fail = st.columns(2)
-        with col_pass:
-            top_piece_pass = st.checkbox("PASS", key="top_piece_pass")
-        with col_fail:
-            top_piece_fail = st.checkbox("FAIL", key="top_piece_fail")
-        
-        st.markdown(f"**{get_text('straps_strength')}**")
-        straps_strength_result_display = get_display_value('straps_strength_result')
-        straps_strength_result_input = st.text_input(
-            f"{get_text('result')}",
-            value=straps_strength_result_display,
-            placeholder=f"{get_text('result')}...",
-            key="straps_strength_result_input",
-            label_visibility="collapsed"
-        )
-        if straps_strength_result_input != straps_strength_result_display:
-            update_english_value('straps_strength_result', straps_strength_result_input)
-        
-        col_pass, col_fail = st.columns(2)
-        with col_pass:
-            straps_strength_pass = st.checkbox("PASS", key="straps_strength_pass")
-        with col_fail:
-            straps_strength_fail = st.checkbox("FAIL", key="straps_strength_fail")
-    
-    with col_right:
-        st.markdown(f"#### {ICONS['test']} {get_text('test_results')}")
-        
-        st.markdown(f"**{get_text('heel_attachment')}**")
-        heel_attachment_result_display = get_display_value('heel_attachment_result')
-        heel_attachment_result_input = st.text_input(
-            f"{get_text('result')}",
-            value=heel_attachment_result_display,
-            placeholder=f"{get_text('result')}...",
-            key="heel_attachment_result_input",
-            label_visibility="collapsed"
-        )
-        if heel_attachment_result_input != heel_attachment_result_display:
-            update_english_value('heel_attachment_result', heel_attachment_result_input)
-        
-        col_pass, col_fail = st.columns(2)
-        with col_pass:
-            heel_attachment_pass = st.checkbox("PASS", key="heel_attachment_pass")
-        with col_fail:
-            heel_attachment_fail = st.checkbox("FAIL", key="heel_attachment_fail")
-        
-        st.markdown(f"**{get_text('insole_perment')}**")
-        insole_perment_result_display = get_display_value('insole_perment_result')
-        insole_perment_result_input = st.text_input(
-            f"{get_text('result')}",
-            value=insole_perment_result_display,
-            placeholder=f"{get_text('result')}...",
-            key="insole_perment_result_input",
-            label_visibility="collapsed"
-        )
-        if insole_perment_result_input != insole_perment_result_display:
-            update_english_value('insole_perment_result', insole_perment_result_input)
-        
-        col_pass, col_fail = st.columns(2)
-        with col_pass:
-            insole_perment_pass = st.checkbox("PASS", key="insole_perment_pass")
-        with col_fail:
-            insole_perment_fail = st.checkbox("FAIL", key="insole_perment_fail")
-        
-        st.markdown(f"**{get_text('toe_post')}**")
-        toe_post_result_display = get_display_value('toe_post_result')
-        toe_post_result_input = st.text_input(
-            f"{get_text('result')}",
-            value=toe_post_result_display,
-            placeholder=f"{get_text('result')}...",
-            key="toe_post_result_input",
-            label_visibility="collapsed"
-        )
-        if toe_post_result_input != toe_post_result_display:
-            update_english_value('toe_post_result', toe_post_result_input)
-        
-        col_pass, col_fail = st.columns(2)
-        with col_pass:
-            toe_post_pass = st.checkbox("PASS", key="toe_post_pass")
-        with col_fail:
-            toe_post_fail = st.checkbox("FAIL", key="toe_post_fail")
+    st.markdown(f'<div class="section-header">🧪 {t("test_results")}</div>', unsafe_allow_html=True)
 
+    test_fields = [
+        ("sole_bonding",    "sole_bonding_result",    "sole_bonding_pass",    "sole_bonding_fail"),
+        ("top_piece",       "top_piece_result",       "top_piece_pass",       "top_piece_fail"),
+        ("straps_strength", "straps_strength_result", "straps_strength_pass", "straps_strength_fail"),
+        ("heel_attachment", "heel_attachment_result", "heel_attachment_pass", "heel_attachment_fail"),
+        ("insole_perment",  "insole_perment_result",  "insole_perment_pass",  "insole_perment_fail"),
+        ("toe_post",        "toe_post_result",        "toe_post_pass",        "toe_post_fail"),
+    ]
+
+    cl, cr = st.columns(2)
+    for i, (lbl_key, result_key, pass_key, fail_key) in enumerate(test_fields):
+        col_obj = cl if i < 3 else cr
+        with col_obj:
+            st.markdown(f"**{t(lbl_key)}**")
+            v = display_val(result_key)
+            inp = st.text_input(t('result'), value=v, placeholder=f"{t('result')}...",
+                                key=f"{result_key}_inp", label_visibility="collapsed")
+            if inp != v: set_ev(result_key, inp)
+            c1, c2 = st.columns(2)
+            with c1: st.checkbox("PASS", key=pass_key)
+            with c2: st.checkbox("FAIL", key=fail_key)
+            st.markdown("---")
+
+# ══════════════════════════════════════════════════════════════════════════════
 with tab4:
+    st.markdown(f'<div class="section-header">✍️ {t("signatures")}</div>', unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    sig_fields_left  = [("factory_rep","factory_representative"), ("gs_qc","gs_qc"), ("area_manager","area_manager")]
+    sig_fields_right = [("gs_tech","grandstep_technician"), ("qa_manager","qa_manager")]
+
+    with c1:
+        for lbl_key, ev_key in sig_fields_left:
+            v = display_val(ev_key)
+            inp = st.text_input(f"✍️ {t(lbl_key)}", value=v, placeholder=t(lbl_key), key=f"{ev_key}_inp")
+            if inp != v: set_ev(ev_key, inp)
+    with c2:
+        for lbl_key, ev_key in sig_fields_right:
+            v = display_val(ev_key)
+            inp = st.text_input(f"✍️ {t(lbl_key)}", value=v, placeholder=t(lbl_key), key=f"{ev_key}_inp")
+            if inp != v: set_ev(ev_key, inp)
+        st.date_input(f"📅 {t('signature_date')}", datetime.now().date(), key="signature_date")
+
     st.markdown(f"""
-    <div class="section-header">
-        <span class="section-header-icon">{ICONS["signatures"]}</span>
-        {get_text("signatures")}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        factory_representative_display = get_display_value('factory_representative')
-        factory_representative_input = st.text_input(
-            f"{ICONS['factory']} {get_text('factory_rep')}",
-            value=factory_representative_display,
-            placeholder=f"{get_text('factory_rep')}...",
-            key="factory_representative_input"
-        )
-        if factory_representative_input != factory_representative_display:
-            update_english_value('factory_representative', factory_representative_input)
-        
-        gs_qc_display = get_display_value('gs_qc')
-        gs_qc_input = st.text_input(
-            f"{ICONS['qc']} {get_text('gs_qc')}",
-            value=gs_qc_display,
-            placeholder=f"{get_text('gs_qc')}...",
-            key="gs_qc_input"
-        )
-        if gs_qc_input != gs_qc_display:
-            update_english_value('gs_qc', gs_qc_input)
-        
-        area_manager_display = get_display_value('area_manager')
-        area_manager_input = st.text_input(
-            f"{ICONS['tech']} {get_text('area_manager')}",
-            value=area_manager_display,
-            placeholder=f"{get_text('area_manager')}...",
-            key="area_manager_input"
-        )
-        if area_manager_input != area_manager_display:
-            update_english_value('area_manager', area_manager_input)
-    
-    with col2:
-        grandstep_technician_display = get_display_value('grandstep_technician')
-        grandstep_technician_input = st.text_input(
-            f"{ICONS['tech']} {get_text('gs_tech')}",
-            value=grandstep_technician_display,
-            placeholder=f"{get_text('gs_tech')}...",
-            key="grandstep_technician_input"
-        )
-        if grandstep_technician_input != grandstep_technician_display:
-            update_english_value('grandstep_technician', grandstep_technician_input)
-        
-        qa_manager_display = get_display_value('qa_manager')
-        qa_manager_input = st.text_input(
-            f"{ICONS['qc']} {get_text('qa_manager')}",
-            value=qa_manager_display,
-            placeholder=f"{get_text('qa_manager')}...",
-            key="qa_manager_input"
-        )
-        if qa_manager_input != qa_manager_display:
-            update_english_value('qa_manager', qa_manager_input)
-        
-        signature_date = st.date_input(
-            f"{ICONS['calendar']} {get_text('signature_date')}",
-            datetime.now(),
-            key="signature_date"
-        )
-    
-    st.markdown(f"""
-    <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-top: 20px;'>
-        <strong>{get_text('disclaimer')}:</strong> {get_text('disclaimer_text')}
+    <div style='background:#f0f4ff;padding:15px;border-radius:8px;
+         border-left:4px solid #e94560;margin-top:20px;'>
+        <strong>{t('disclaimer')}:</strong> {t('disclaimer_text')}
     </div>
     """, unsafe_allow_html=True)
 
-# Generate PDF Button
+# ── Generate button ─────────────────────────────────────────────────────────
 st.markdown("---")
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if st.button(f"{ICONS['generate']} {get_text('generate_pdf')}", use_container_width=True):
-        if not st.session_state.english_values.get('contract_no') or not st.session_state.english_values.get('style_name'):
-            st.error(f"{ICONS['error']} {get_text('fill_required')}")
+_, center_col, _ = st.columns([1, 2, 1])
+with center_col:
+    if st.button(t('generate_pdf'), use_container_width=True):
+        if not get_ev('contract_no') or not get_ev('style_name'):
+            st.error(f"⚠️ {t('fill_required')}")
         else:
-            with st.spinner(f"{ICONS['time']} {get_text('creating_pdf')}"):
+            with st.spinner(f"⏳ {t('creating_pdf')}"):
                 try:
-                    pdf_buffer = generate_pdf()
-                    st.success(f"{ICONS['success']} {get_text('generate_success')}")
-                    
-                    with st.expander(f"{ICONS['info']} {get_text('pdf_details')}"):
-                        col_info1, col_info2 = st.columns(2)
-                        with col_info1:
-                            st.metric(get_text("location"), f"{selected_city} ({CHINESE_CITIES[selected_city]})")
-                            st.metric(get_text("report_language"), "Mandarin" if st.session_state.pdf_language == "zh" else "English")
-                        with col_info2:
-                            china_tz = pytz.timezone('Asia/Shanghai')
-                            current_time = datetime.now(china_tz)
-                            st.metric(get_text("generated"), current_time.strftime('%H:%M:%S'))
-                    
-                    filename = f"DieCut_Test_{st.session_state.english_values.get('contract_no', '')}_{selected_city}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                    st.download_button(
-                        label=f"{ICONS['download']} {get_text('download_pdf')}",
-                        data=pdf_buffer,
-                        file_name=filename,
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                    
+                    pdf_buf = generate_pdf()
+                    st.success(f"✅ {t('generate_success')}")
+                    with st.expander(f"ℹ️ {t('pdf_details')}"):
+                        mc1, mc2 = st.columns(2)
+                        with mc1:
+                            st.metric(t('location'),
+                                      f"{st.session_state.selected_city} ({CHINESE_CITIES.get(st.session_state.selected_city,'')})")
+                            st.metric(t('report_language'),
+                                      "中文" if st.session_state.pdf_language == "zh" else "English")
+                        with mc2:
+                            st.metric(t('generated'),
+                                      datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%H:%M:%S'))
+                    fname = (f"DieCut_{get_ev('contract_no')}_{st.session_state.selected_city}"
+                             f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+                    st.download_button(label=t('download_pdf'), data=pdf_buf,
+                                       file_name=fname, mime="application/pdf",
+                                       use_container_width=True)
                 except Exception as e:
-                    st.error(f"{ICONS['error']} {get_text('error_generating')}: {str(e)}")
+                    st.error(f"❌ {t('error_generating')}: {str(e)}")
+                    with st.expander("Debug"):
+                        import traceback; st.code(traceback.format_exc())
 
-# Footer
-st.markdown("---")
+# ── Footer ──────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="footer">
-    <p style='font-size: 1.2rem; font-weight: 600; color: #667eea; margin-bottom: 0.5rem;'>
-        {ICONS['title']} {get_text('footer_text')}
-    </p>
-    <p style='font-size: 0.9rem; color: #666666;'>
-        {ICONS['location']} {get_text('location')}: {selected_city} ({CHINESE_CITIES[selected_city]}) | 
-        {ICONS['language']} {get_text('report_language')}: {'Mandarin' if st.session_state.pdf_language == 'zh' else 'English'}
-    </p>
-    <p style='font-size: 0.8rem; color: #999999; margin-top: 1rem;'>
-        {get_text('powered_by')} | {get_text('copyright')}
-    </p>
+  <p style="font-size:1.1rem;font-weight:700;color:#1a1a2e;margin-bottom:.4rem;">
+    ✂️ {t('footer_text')}
+  </p>
+  <p style="font-size:.85rem;color:#555;">
+    📍 {st.session_state.selected_city} ({CHINESE_CITIES.get(st.session_state.selected_city,'')}) &nbsp;|&nbsp;
+    🌐 {"中文" if st.session_state.pdf_language=="zh" else "English"}
+  </p>
+  <p style="font-size:.75rem;color:#999;margin-top:.8rem;">
+    {t('powered_by')} &nbsp;|&nbsp; {t('copyright')}
+  </p>
 </div>
 """, unsafe_allow_html=True)
