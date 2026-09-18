@@ -534,7 +534,7 @@ Columns: `Master Sku`, `Sum`, `Main Category` (Footwear / Apparel), `Category`, 
     with c5: st.markdown(kpi_card(bal_label,           kpis['Total Balance'],   'number'), unsafe_allow_html=True)
     with c6: st.markdown(kpi_card("Sales %",           kpis['Sales %'],         'pct'),    unsafe_allow_html=True)
 
-
+    st.markdown("<br>")
 
     # Sidebar quick stats (after KPI calc)
     with st.sidebar:
@@ -589,7 +589,7 @@ Columns: `Master Sku`, `Sum`, `Main Category` (Footwear / Apparel), `Category`, 
         else:
             st.warning("Season data not available.")
 
-
+    st.markdown("<br>")
     st.info(
         f"📊 Category: **{cat_label}** | Sorted by **{sort_col_sel}** ({sort_order}) | "
         f"Filters — Status: {sel_status} | Channel: {sel_channel} | Country: {sel_country}"
